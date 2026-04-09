@@ -1164,7 +1164,15 @@ async def export_session_report(
         raise HTTPException(status_code=404, detail="No insights for this session")
     insight = session.insights[-1] if isinstance(session.insights, list) else session.insights
 
-    md = build_export(brand, insight)
+    # Get scraped data for raw verbatims export
+    scraped_result = await db.execute(
+        select(ScrapedData)
+        .where(ScrapedData.session_id == session_id)
+        .order_by(ScrapedData.relevance_score.desc().nullslast(), ScrapedData.scraped_at.desc())
+    )
+    scraped_data = list(scraped_result.scalars().all())
+
+    md = build_export(brand, insight, scraped_data)
     safe_name = brand.name.lower().replace(' ', '-')
 
     return Response(

@@ -118,22 +118,41 @@ def fmt_hooks_library(hooks):
     for category, items in hooks.items():
         if not items:
             continue
+        # Skip metadata keys that aren't hook categories
+        if category in ('brand', 'total_hooks', 'total'):
+            continue
         out.append(f"### {category.replace('_', ' ').title()}\n")
         if isinstance(items, list):
             for item in items:
                 if isinstance(item, dict):
-                    hook_text = item.get('hook', item.get('text', str(item)))
+                    hook_text = item.get('hook_text', item.get('hook', item.get('text', '')))
+                    if not hook_text:
+                        continue
+                    hook_type = item.get('hook_type', '')
                     persona = item.get('target_persona', item.get('persona', ''))
-                    out.append(f'- "{hook_text}"')
+                    pain = item.get('pain_point_addressed', '')
+                    verbatim = item.get('verbatim_source', '')
+                    strength = item.get('strength_score', '')
+                    platform = item.get('platform_fit', [])
+
+                    type_str = f" [{hook_type}]" if hook_type else ""
+                    score_str = f" (strength: {strength}/5)" if strength else ""
+                    out.append(f'- **"{hook_text}"**{type_str}{score_str}')
                     if persona:
                         out.append(f"  - Target: {persona}")
+                    if pain:
+                        out.append(f"  - Pain point: {pain}")
+                    if verbatim:
+                        out.append(f'  - Based on: "{verbatim}"')
+                    if platform and isinstance(platform, list):
+                        out.append(f"  - Platforms: {', '.join(platform)}")
                 else:
                     out.append(f"- {item}")
+        elif isinstance(items, (int, str)):
+            out.append(f"- {items}")
         elif isinstance(items, dict):
             for k, v in items.items():
                 out.append(f"- **{k}**: {v}")
-        else:
-            out.append(f"- {items}")
         out.append("")
     return "\n".join(out) + "\n"
 
@@ -374,10 +393,11 @@ def fmt_recommended_hooks(hooks):
 
 # ── Main export builder ───────────────────────────────────────────────────
 
-def build_export(brand: Any, insight: Any) -> str:
-    """Build the comprehensive markdown export from Brand + Insight ORM objects."""
+def build_export(brand: Any, insight: Any, scraped_data: list = None) -> str:
+    """Build the comprehensive markdown export from Brand + Insight + ScrapedData ORM objects."""
     b = brand
     ins = insight
+    raw_data = scraped_data or []
 
     md = f"""# {b.name} — Brand Intelligence Report
 
@@ -589,17 +609,87 @@ def build_export(brand: Any, insight: Any) -> str:
     md += """
 ---
 
-## 13. Verbatim Quotes (for Ads)
+## 13. Verbatim Quotes (Brand Mentions)
+
+These are real customer quotes about the brand — from reviews, Reddit, forums, and social media. Use for ad copy, testimonials, and persona building.
 
 """
     md += fmt_verbatims(ins.verbatim_quotes)
 
+    # Extract additional verbatims directly from scraped_data (brand mentions only)
+    BRAND_SOURCES = {'reddit', 'trustpilot', 'app_store', 'play_store', 'google_reviews',
+                     'g2', 'capterra', 'other_review', 'forum', 'quora', 'youtube_comment',
+                     'brand_website', 'competitor_comparison'}
+    if raw_data:
+        brand_verbatims = []
+        for item in raw_data:
+            st = getattr(item, 'source_type', '') or ''
+            track = getattr(item, 'track', None)
+            content = (getattr(item, 'content', '') or '').strip()
+            if not content or len(content) < 30:
+                continue
+            if st.lower() not in BRAND_SOURCES and track != 1:
+                continue
+            score = getattr(item, 'sentiment_score', None)
+            brand_verbatims.append((item, abs(float(score)) if score is not None else 0))
+
+        # Sort by strongest sentiment (most opinionated = most useful for ads)
+        brand_verbatims.sort(key=lambda x: x[1], reverse=True)
+
+        shown = brand_verbatims[:30]
+        if shown:
+            md += "\n### Top Verbatims from Scraped Data (by sentiment strength)\n\n"
+            for item, _ in shown:
+                content = (getattr(item, 'content', '') or '')[:400].replace('\n', ' ').strip()
+                source_type = getattr(item, 'source_type', '') or ''
+                source_url = getattr(item, 'source_url', '') or ''
+                sentiment = getattr(item, 'sentiment', '') or ''
+                author = getattr(item, 'author', '') or ''
+                md += f'> "{content}"\n'
+                meta = []
+                if source_type:
+                    meta.append(source_type)
+                if sentiment:
+                    meta.append(sentiment)
+                if author:
+                    meta.append(f"@{author}")
+                if source_url:
+                    meta.append(f"[source]({source_url})")
+                if meta:
+                    md += f"> — *{' | '.join(meta)}*\n"
+                md += "\n"
+
+    # Split top_quotes into brand-related vs segment/trends
+    brand_quotes = []
+    segment_quotes = []
+    SEGMENT_SOURCES = {'tiktok', 'instagram', 'segment_discussion'}
+    if ins.top_quotes and isinstance(ins.top_quotes, list):
+        for q in ins.top_quotes:
+            if isinstance(q, dict):
+                src = (q.get('source', q.get('source_type', '')) or '').lower()
+                track = q.get('track', None)
+                if src in SEGMENT_SOURCES or track == 2:
+                    segment_quotes.append(q)
+                else:
+                    brand_quotes.append(q)
+            else:
+                brand_quotes.append(q)
+
+    if brand_quotes:
+        md += "\n### Additional Brand Quotes from Reviews & Social\n\n"
+        md += fmt_top_quotes(brand_quotes)
+
     md += """---
 
-## 14. Top Quotes from Reviews & Social
+## 14. Segment & Trend Quotes (TikTok, Instagram, Niche)
+
+These quotes come from segment research and social trends — they reflect the broader market conversation, not direct brand mentions. Useful for understanding audience language, content trends, and cultural context.
 
 """
-    md += fmt_top_quotes(ins.top_quotes)
+    if segment_quotes:
+        md += fmt_top_quotes(segment_quotes)
+    else:
+        md += "(no segment trend quotes)\n"
 
     md += """---
 
@@ -654,6 +744,174 @@ def build_export(brand: Any, insight: Any) -> str:
                 md += f"- **{k.replace('_', ' ').title()}**: {v}\n"
     else:
         md += "- (no data summary)\n"
+
+    # ── Section 19: Proto-ICP Clusters (complete) ──────────────────────────
+
+    proto_icps = ins.proto_icps
+    if proto_icps and isinstance(proto_icps, list) and len(proto_icps) > 0:
+        md += """
+---
+
+## 19. Proto-ICP Clusters (Voice of Customer)
+
+These clusters are built from real customer language, grouped by **trigger** (why they started searching) and **blocker** (what holds them back). Each cluster includes representative verbatim snippets with sources.
+
+"""
+        for i, cluster in enumerate(proto_icps, 1):
+            if not isinstance(cluster, dict):
+                continue
+            trigger = cluster.get('trigger', cluster.get('primary_trigger', 'Unknown'))
+            blocker = cluster.get('blocker', cluster.get('blocker_type', 'Unknown'))
+            count = cluster.get('snippet_count', cluster.get('count', 0))
+            md += f"### Cluster {i}: {trigger} × {blocker} ({count} snippets)\n\n"
+
+            # Outcome distribution
+            outcomes = cluster.get('outcome_distribution', cluster.get('desired_outcomes', {}))
+            if outcomes and isinstance(outcomes, dict):
+                md += "**Desired Outcomes**: "
+                md += ", ".join(f"{k}: {v}" for k, v in outcomes.items() if v)
+                md += "\n\n"
+
+            # Proof types
+            proofs = cluster.get('proof_type_distribution', cluster.get('proof_types', {}))
+            if proofs and isinstance(proofs, dict):
+                md += "**Proof Types Trusted**: "
+                md += ", ".join(f"{k}: {v}" for k, v in proofs.items() if v)
+                md += "\n\n"
+
+            # Language cues
+            cues = cluster.get('top_language_cues', cluster.get('language_cues', []))
+            if cues:
+                cue_list = cues[:10] if isinstance(cues, list) else [cues]
+                md += f"**Language Cues**: {', '.join(str(c) for c in cue_list)}\n\n"
+
+            # Representative snippets
+            snippets = cluster.get('representative_snippets', cluster.get('snippets', []))
+            if snippets and isinstance(snippets, list):
+                for s in snippets[:5]:
+                    if isinstance(s, dict):
+                        content = s.get('content', s.get('text', ''))[:300]
+                        source = s.get('source_url', s.get('url', ''))
+                        source_type = s.get('source_type', '')
+                        md += f'> "{content}"\n'
+                        if source_type or source:
+                            md += f"> — *{source_type}*"
+                            if source:
+                                md += f" [{source}]({source})"
+                            md += "\n"
+                        md += "\n"
+                    elif isinstance(s, str):
+                        md += f'> "{s[:300]}"\n\n'
+            md += "\n"
+
+    # ── Section 20: Raw Customer Verbatims by Source ─────────────────────
+
+    if raw_data:
+        md += """
+---
+
+## 20. Raw Customer Verbatims by Source
+
+Real customer feedback with source attribution, sentiment, and intake classification. This is the raw evidence base for persona building and creative strategy.
+
+"""
+        # Group by source_type
+        from collections import defaultdict
+        by_source = defaultdict(list)
+        for item in raw_data:
+            st = getattr(item, 'source_type', None) or 'unknown'
+            by_source[st].append(item)
+
+        for source_type in sorted(by_source.keys()):
+            items = by_source[source_type]
+            md += f"### {source_type.replace('_', ' ').title()} ({len(items)} items)\n\n"
+
+            # Take top 50 per source, sorted by relevance
+            shown = items[:50]
+            for item in shown:
+                content = getattr(item, 'content', '') or ''
+                if not content.strip():
+                    continue
+                content = content[:500].replace('\n', ' ').strip()
+                source_url = getattr(item, 'source_url', '') or ''
+                author = getattr(item, 'author', '') or ''
+                sentiment = getattr(item, 'sentiment', '') or ''
+                sentiment_score = getattr(item, 'sentiment_score', None)
+                posted_at = getattr(item, 'posted_at', None)
+
+                md += f'> "{content}"\n'
+                meta_parts = []
+                if author:
+                    meta_parts.append(f"@{author}")
+                if sentiment:
+                    score_str = f" ({sentiment_score:.2f})" if sentiment_score is not None else ""
+                    meta_parts.append(f"{sentiment}{score_str}")
+                if posted_at:
+                    meta_parts.append(str(posted_at)[:10])
+                if source_url:
+                    meta_parts.append(f"[source]({source_url})")
+                if meta_parts:
+                    md += f"> — *{' | '.join(meta_parts)}*\n"
+
+                # Intake engine classifications
+                trigger = getattr(item, 'primary_trigger', None)
+                blocker = getattr(item, 'blocker_type', None)
+                outcome = getattr(item, 'desired_outcome_level', None)
+                proof = getattr(item, 'proof_type_trusted', None)
+                lang_cues = getattr(item, 'language_cues', None)
+                intake_parts = []
+                if trigger:
+                    intake_parts.append(f"trigger={trigger}")
+                if blocker:
+                    intake_parts.append(f"blocker={blocker}")
+                if outcome:
+                    intake_parts.append(f"outcome={outcome}")
+                if proof:
+                    intake_parts.append(f"proof={proof}")
+                if lang_cues and isinstance(lang_cues, list):
+                    intake_parts.append(f"cues={', '.join(lang_cues[:5])}")
+                if intake_parts:
+                    md += f"> *[{' | '.join(intake_parts)}]*\n"
+
+                md += "\n"
+
+            if len(items) > 50:
+                md += f"*... and {len(items) - 50} more {source_type} items*\n\n"
+
+    # ── Section 21: Sentiment Distribution by Source ─────────────────────
+
+    if raw_data:
+        md += """
+---
+
+## 21. Sentiment Distribution by Source
+
+| Source | Total | Positive | Neutral | Negative | Avg Score |
+|--------|-------|----------|---------|----------|-----------|
+"""
+        from collections import defaultdict
+        sent_stats = defaultdict(lambda: {'total': 0, 'positive': 0, 'neutral': 0, 'negative': 0, 'score_sum': 0.0, 'score_count': 0})
+        for item in raw_data:
+            st = getattr(item, 'source_type', None) or 'unknown'
+            sentiment = (getattr(item, 'sentiment', '') or '').lower()
+            score = getattr(item, 'sentiment_score', None)
+            sent_stats[st]['total'] += 1
+            if 'positive' in sentiment:
+                sent_stats[st]['positive'] += 1
+            elif 'negative' in sentiment:
+                sent_stats[st]['negative'] += 1
+            else:
+                sent_stats[st]['neutral'] += 1
+            if score is not None:
+                sent_stats[st]['score_sum'] += float(score)
+                sent_stats[st]['score_count'] += 1
+
+        for source in sorted(sent_stats.keys()):
+            s = sent_stats[source]
+            avg = f"{s['score_sum'] / s['score_count']:.3f}" if s['score_count'] > 0 else "N/A"
+            md += f"| {source.replace('_', ' ').title()} | {s['total']} | {s['positive']} | {s['neutral']} | {s['negative']} | {avg} |\n"
+
+        md += "\n"
 
     md += f"""
 ---
