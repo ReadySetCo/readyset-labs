@@ -1,0 +1,49 @@
+# FastAPI and server
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+python-multipart==0.0.19
+
+# Database
+sqlalchemy==2.0.36
+aiosqlite==0.20.0
+
+# HTTP clients
+httpx==0.28.1
+aiohttp==3.11.11
+
+# OpenAI
+openai==1.58.1
+
+# Google Gemini
+google-generativeai==0.8.3
+
+# Apify
+apify-client==1.8.1
+
+# Pydantic
+pydantic==2.10.4
+pydantic-settings==2.7.0
+
+# Utilities
+python-dotenv==1.0.1
+tenacity==9.0.0
+
+# Ad Library scraping
+yt-dlp>=2024.12.6
+requests>=2.31.0
+
+# Free social media scrapers
+ntscraper>=0.3.0
+instaloader>=4.10
+TikTokApi>=6.0.0
+youtube-comment-downloader>=0.1.68
+playwright>=1.40.0
+
+# ML-based Sentiment Analysis (RoBERTa)
+transformers>=4.36.0
+torch>=2.1.0
+scipy>=1.11.0
+
+# RAG / Vector Store
+chromadb>=1.0.0
+

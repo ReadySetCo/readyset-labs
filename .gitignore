@@ -1,0 +1,94 @@
+# ============================================
+# Root .gitignore - Brand Intelligence Scraper
+# ============================================
+
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+dist/
+build/
+venv/
+.venv/
+env/
+
+# Node
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+logs/
+
+# Large / data files
+*.zip
+*.csv
+*.xlsx
+*.xls
+*.mp4
+*.mp3
+*.avi
+*.mov
+*.exe
+*.pdf
+
+# Output / cache / data
+output/
+cache/
+image_cache/
+vector_db/
+knowledge_base/
+knowledge_base_processed/
+knowledge_base_rag/
+exports/
+
+# Backups
+backup_*/
+*_BACKUP_*/
+
+# Agent / AI state
+.agent/
+.gemini/
+.claude/
+
+# Facebook cookies
+facebook_cookies.txt
+
+# Archive (moved junk/large files)
+_archive/
+
+# Debug / temp data
+*.tmp
+*.bak
+*.txt
+!requirements.txt
+server.log
+session*.json
+debug_*.json
+debug_*.png
+insights*.json
+*_log.txt
+ad_dump_*.txt

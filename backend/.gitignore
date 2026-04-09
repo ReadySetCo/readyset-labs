@@ -1,0 +1,37 @@
+# Environment & Secrets
+.env
+.env.local
+.env.*.local
+facebook_cookies.txt
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+*.egg
+venv/
+.venv/
+
+# Output / cache
+output/
+cache/
+knowledge_base/
+knowledge_base_processed/
+
+# Logs
+*.log
+logs/
+
+# Data files
+*.zip
+*.csv
+*.xlsx
+
+# Backup files
+*.bak

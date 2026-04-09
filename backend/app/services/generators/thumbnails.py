@@ -1,0 +1,157 @@
+# -*- coding: utf-8 -*-
+"""
+Thumbnail Suggester - Lightweight, reliable thumbnail suggestions.
+"""
+
+import asyncio
+from typing import Dict, Any, List
+from ..llm.client import get_llm_client
+
+
+class ThumbnailSuggester:
+    """Generates thumbnail suggestions with short, focused prompts."""
+    
+    def __init__(self):
+        self.llm = get_llm_client()
+    
+    async def suggest_thumbnails(
+        self,
+        brand_info: Dict[str, Any],
+        ad_patterns: Dict[str, Any],
+        insights: Dict[str, Any],
+        num_suggestions: int = 3
+    ) -> List[Dict[str, Any]]:
+        """Generate thumbnail suggestions using real Ad Library data."""
+        
+        brand_name = brand_info.get('name', 'Brand')[:50]
+        sector = str(brand_info.get('sector', ''))[:30]
+        
+        # Get key data from insights
+        pain_points = insights.get('pain_points', [])[:5]
+        pain_text = '\n'.join([f"• {str(p.get('pain_point', p) if isinstance(p, dict) else p)[:80]}" for p in pain_points]) or "common problems"
+        
+        # Get Ad Library data (what's working)
+        ad_examples = ad_patterns.get('ad_examples', {})
+        visual_types = list(ad_patterns.get('visual_types', {}).keys())[:5]
+        first_frames = []
+        best_hooks = []
+        
+        for ad in ad_examples.get('brand_ads', [])[:10]:
+            if ad.get('visual_type'):
+                if ad['visual_type'] not in visual_types:
+                    visual_types.append(ad['visual_type'])
+            if ad.get('hook'):
+                best_hooks.append(f"• \"{ad['hook'][:100]}\" (Strength: {ad.get('hook_strength', 0)}/5)")
+        
+        for ad in ad_examples.get('competitor_ads', [])[:5]:
+            if ad.get('hook'):
+                best_hooks.append(f"• [{ad.get('competitor', 'Competitor')}] \"{ad['hook'][:100]}\"")
+        
+        visual_types_text = ', '.join(visual_types[:6]) if visual_types else "talking head, product demo, lifestyle"
+        hooks_text = '\n'.join(best_hooks[:8]) if best_hooks else "No hooks analyzed"
+        
+        print(f"       -> Generating {num_suggestions} thumbnail ideas (using {len(best_hooks)} hooks, {len(visual_types)} visual types)...")
+        
+        prompt = f"""Suggest {num_suggestions} thumbnail/first-frame ideas for {brand_name} ({sector}) video ads.
+
+=== TARGET AUDIENCE PAIN POINTS ===
+{pain_text}
+
+=== VISUAL STYLES THAT WORK (from analyzed ads) ===
+{visual_types_text}
+
+=== TOP HOOKS FROM SUCCESSFUL ADS ===
+These hooks stopped the scroll - use similar strategies:
+{hooks_text}
+
+=== TASK ===
+Create {num_suggestions} thumbnail concepts that:
+1. Match the visual styles that work for this brand
+2. Use hooks/text that create curiosity or address pain points
+3. Would stop someone from scrolling in their feed
+
+Return JSON array:
+[
+    {{
+        "concept_name": "Short memorable name",
+        "description": "What the thumbnail shows - be specific about visuals",
+        "visual_elements": ["element1", "element2", "element3"],
+        "text_overlay": "Bold text shown on thumbnail (use hook inspiration)",
+        "visual_style": "UGC/Studio/Lifestyle/Product-focused/etc",
+        "first_frame_element": "Face/Product/Text/Scene/Offer",
+        "emotion_target": "Emotion to evoke",
+        "why_effective": "Why this will stop the scroll - reference the data above"
+    }}
+]"""
+
+        try:
+            result = await asyncio.wait_for(
+                self.llm.complete_json(prompt=prompt, temperature=0.7),
+                timeout=30.0  # 30s timeout for thumbnails
+            )
+            
+            if result and isinstance(result, list):
+                print(f"       -> Generated {len(result)} thumbnail ideas")
+                return result[:num_suggestions]
+            elif result and isinstance(result, dict):
+                # Handle wrapped response
+                for key in ["thumbnails", "suggestions", "concepts"]:
+                    if key in result and isinstance(result[key], list):
+                        return result[key][:num_suggestions]
+        
+        except asyncio.TimeoutError:
+            print(f"       [!] Thumbnail generation timeout")
+        except Exception as e:
+            print(f"       [!] Thumbnail generation failed: {e}")
+        
+        # Fallback thumbnails
+        print(f"       -> Using fallback thumbnails")
+        return self._generate_fallbacks(brand_name, num_suggestions)
+    
+    def _generate_fallbacks(self, brand_name: str, num: int) -> List[Dict[str, Any]]:
+        """Generate fallback thumbnail suggestions."""
+        fallbacks = [
+            {
+                "concept_name": "Problem Face",
+                "description": f"Close-up of person with frustrated expression, relatable problem",
+                "visual_elements": ["face", "emotion", "problem context"],
+                "text_overlay": "Sound familiar?",
+                "emotion_target": "Recognition",
+                "why_effective": "Creates immediate emotional connection"
+            },
+            {
+                "concept_name": "Before/After Split",
+                "description": f"Split screen showing transformation with {brand_name}",
+                "visual_elements": ["split screen", "contrast", "product"],
+                "text_overlay": "The difference is real",
+                "emotion_target": "Aspiration",
+                "why_effective": "Shows tangible results"
+            },
+            {
+                "concept_name": "Curiosity Question",
+                "description": f"Bold text question with intriguing background",
+                "visual_elements": ["text", "minimal design", "curiosity gap"],
+                "text_overlay": "Wait... this actually works?",
+                "emotion_target": "Curiosity",
+                "why_effective": "Creates information gap that demands resolution"
+            }
+        ]
+        return fallbacks[:num]
+    
+    async def analyze_thumbnail_effectiveness(
+        self,
+        thumbnail_descriptions: List[str]
+    ) -> List[Dict[str, Any]]:
+        """Quick effectiveness analysis."""
+        return [{"description": d, "score": 3, "suggestion": "Test variations"} for d in thumbnail_descriptions]
+    
+    async def generate_ab_thumbnail_pairs(
+        self,
+        base_concept: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """Generate A/B variations of a thumbnail."""
+        name = base_concept.get('concept_name', 'Concept')
+        return [
+            {**base_concept, "variant": "A", "concept_name": f"{name} - Text Focus"},
+            {**base_concept, "variant": "B", "concept_name": f"{name} - Visual Focus"}
+        ]
