@@ -8,9 +8,10 @@ import {
     Sparkles,
     User,
     Bot,
-    Lightbulb
+    Lightbulb,
+    Bookmark
 } from 'lucide-react';
-import { sendChatMessage, getChatSuggestions } from '../api/client';
+import { sendChatMessage, getChatSuggestions, getChatHistory, saveInsight } from '../api/client';
 import type { ChatResponse } from '../api/client';
 
 interface ChatSource {
@@ -26,6 +27,7 @@ interface ChatMessage {
     content: string;
     timestamp: Date;
     sources?: ChatSource[];
+    messageId?: number;
 }
 
 interface ChatPanelProps {
@@ -38,6 +40,12 @@ export default function ChatPanel({ sessionId, brandId }: ChatPanelProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
+    const [saveInsightModal, setSaveInsightModal] = useState<{ visible: boolean; messageIndex: number; label: string }>({
+        visible: false,
+        messageIndex: -1,
+        label: ''
+    });
+    const [savedMessageIds, setSavedMessageIds] = useState<Set<number>>(new Set());  // Set of message IDs (from DB)
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Get suggestions
@@ -47,7 +55,34 @@ export default function ChatPanel({ sessionId, brandId }: ChatPanelProps) {
         enabled: isOpen && messages.length === 0,
     });
 
-    // Send message mutation - using LOCAL RAG (ChromaDB) instead of AnythingLLM
+    // Load chat history when panel opens or session changes
+    const { data: historyData, isLoading: isLoadingHistory } = useQuery({
+        queryKey: ['chatHistory', sessionId],
+        queryFn: () => (sessionId ? getChatHistory(sessionId) : Promise.resolve(null)),
+        enabled: isOpen && !!sessionId,
+    });
+
+    // Populate messages from history on first load
+    useEffect(() => {
+        if (historyData?.messages && messages.length === 0) {
+            const loadedMessages = historyData.messages.map(msg => ({
+                role: msg.role as 'user' | 'assistant',
+                content: msg.content,
+                timestamp: new Date(msg.created_at),
+                messageId: msg.id
+            }));
+            setMessages(loadedMessages);
+            // Mark all loaded messages as saved (they're already in DB)
+            const savedIds = new Set(
+                loadedMessages
+                    .filter(msg => msg.messageId)
+                    .map(msg => msg.messageId!)
+            );
+            setSavedMessageIds(savedIds);
+        }
+    }, [historyData, messages.length]);
+
+    // Send message mutation
     const sendMutation = useMutation({
         mutationFn: (message: string) => sendChatMessage({
             message,
@@ -58,12 +93,25 @@ export default function ChatPanel({ sessionId, brandId }: ChatPanelProps) {
             const responseText = data.error
                 ? `Error: ${data.error}`
                 : data.response;
-            setMessages(prev => [...prev, {
-                role: 'assistant',
-                content: responseText,
-                timestamp: new Date(),
-                sources: data.sources as ChatSource[] | undefined
-            }]);
+            setMessages(prev => {
+                const updated = [...prev];
+                // Update user message with ID if available
+                if (data.message_ids?.user && updated.length > 0) {
+                    const lastMsg = updated[updated.length - 1];
+                    if (lastMsg.role === 'user' && !lastMsg.messageId) {
+                        lastMsg.messageId = data.message_ids.user;
+                    }
+                }
+                // Add assistant message with ID
+                updated.push({
+                    role: 'assistant',
+                    content: responseText,
+                    timestamp: new Date(),
+                    sources: data.sources as ChatSource[] | undefined,
+                    messageId: data.message_ids?.assistant
+                });
+                return updated;
+            });
         },
         onError: (error: Error) => {
             setMessages(prev => [...prev, {
@@ -71,6 +119,25 @@ export default function ChatPanel({ sessionId, brandId }: ChatPanelProps) {
                 content: `Error: ${error.message}`,
                 timestamp: new Date()
             }]);
+        }
+    });
+
+    // Save insight mutation
+    const saveInsightMutation = useMutation({
+        mutationFn: (payload: { question: string; answer: string; label: string }) =>
+            saveInsight({
+                session_id: sessionId || 0,
+                brand_id: brandId || 0,
+                question: payload.question,
+                answer: payload.answer,
+                label: payload.label
+            }),
+        onSuccess: () => {
+            const msg = messages[saveInsightModal.messageIndex];
+            if (msg?.messageId) {
+                setSavedMessageIds(prev => new Set([...prev, msg.messageId!]));
+            }
+            setSaveInsightModal({ visible: false, messageIndex: -1, label: '' });
         }
     });
 
@@ -102,6 +169,34 @@ export default function ChatPanel({ sessionId, brandId }: ChatPanelProps) {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
             handleSend();
+        }
+    };
+
+    const handleSaveInsight = (messageIndex: number) => {
+        setSaveInsightModal({
+            visible: true,
+            messageIndex,
+            label: ''
+        });
+    };
+
+    const handleConfirmSaveInsight = () => {
+        const msg = messages[saveInsightModal.messageIndex];
+        if (msg && saveInsightModal.label.trim()) {
+            // Find the preceding user message
+            let userMessage = '';
+            for (let i = saveInsightModal.messageIndex - 1; i >= 0; i--) {
+                if (messages[i].role === 'user') {
+                    userMessage = messages[i].content;
+                    break;
+                }
+            }
+
+            saveInsightMutation.mutate({
+                question: userMessage,
+                answer: msg.content,
+                label: saveInsightModal.label
+            });
         }
     };
 
@@ -211,9 +306,27 @@ export default function ChatPanel({ sessionId, brandId }: ChatPanelProps) {
                                                 </div>
                                             </div>
                                         )}
-                                        <span className="text-xs opacity-50 mt-1 block">
-                                            {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                                        </span>
+                                        <div className="flex items-center justify-between mt-2 gap-2">
+                                            <span className="text-xs opacity-50">
+                                                {msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                                            </span>
+                                            {msg.role === 'assistant' && msg.messageId && !savedMessageIds.has(msg.messageId) && (
+                                                <button
+                                                    onClick={() => handleSaveInsight(i)}
+                                                    className="text-xs px-2 py-1 rounded bg-slate-700/50 text-slate-400 hover:text-slate-200 hover:bg-slate-700 transition-colors flex items-center gap-1"
+                                                    title="Save this insight to brand knowledge base"
+                                                >
+                                                    <Bookmark className="w-3 h-3" />
+                                                    Save
+                                                </button>
+                                            )}
+                                            {msg.role === 'assistant' && msg.messageId && savedMessageIds.has(msg.messageId) && (
+                                                <span className="text-xs px-2 py-1 rounded bg-emerald-900/40 text-emerald-400 flex items-center gap-1">
+                                                    <Bookmark className="w-3 h-3 fill-current" />
+                                                    Saved
+                                                </span>
+                                            )}
+                                        </div>
                                     </div>
                                 </div>
                             ))
@@ -255,6 +368,51 @@ export default function ChatPanel({ sessionId, brandId }: ChatPanelProps) {
                             </button>
                         </div>
                     </div>
+
+                    {/* Save Insight Modal */}
+                    {saveInsightModal.visible && (
+                        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+                            <div className="bg-slate-800 rounded-lg p-6 max-w-sm border border-slate-700 shadow-xl">
+                                <h3 className="text-lg font-semibold text-white mb-3">Save Insight</h3>
+                                <p className="text-sm text-slate-300 mb-4">
+                                    Give this insight a short title so you can find it later. It will be added to your Brand Knowledge Base and used as context in future research sessions.
+                                </p>
+                                <input
+                                    type="text"
+                                    value={saveInsightModal.label}
+                                    onChange={(e) => setSaveInsightModal(prev => ({ ...prev, label: e.target.value }))}
+                                    placeholder="e.g., Customer's top pain point, Effective hook type..."
+                                    className="w-full bg-slate-900 text-white rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 mb-4 border border-slate-700"
+                                    autoFocus
+                                />
+                                <div className="flex gap-2 justify-end">
+                                    <button
+                                        onClick={() => setSaveInsightModal({ visible: false, messageIndex: -1, label: '' })}
+                                        className="px-4 py-2 rounded-lg bg-slate-700 text-slate-200 hover:bg-slate-600 transition-colors text-sm"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        onClick={handleConfirmSaveInsight}
+                                        disabled={!saveInsightModal.label.trim() || saveInsightMutation.isPending}
+                                        className="px-4 py-2 rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm flex items-center gap-2"
+                                    >
+                                        {saveInsightMutation.isPending ? (
+                                            <>
+                                                <Loader2 className="w-3 h-3 animate-spin" />
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Bookmark className="w-3 h-3" />
+                                                Save Insight
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
             )}
         </>

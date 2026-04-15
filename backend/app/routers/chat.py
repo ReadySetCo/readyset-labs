@@ -31,6 +31,7 @@ class ChatResponse(BaseModel):
     sources: List[dict] = []
     timestamp: str
     error: Optional[str] = None
+    message_ids: Optional[dict] = None  # {"user": id, "assistant": id}
 
 
 class GenerateScriptRequest(BaseModel):
@@ -69,10 +70,10 @@ async def chat(
     try:
         # Get or create chatbot for this conversation
         session_key = f"s{request.session_id or 0}_b{request.brand_id or 0}"
-        
+
         if session_key not in _chatbot_sessions:
-            _chatbot_sessions[session_key] = ChatbotService(db)
-        
+            _chatbot_sessions[session_key] = ChatbotService(db, brand_id=request.brand_id, session_id=request.session_id)
+
         chatbot = _chatbot_sessions[session_key]
         # Update DB reference (in case connection changed)
         chatbot.db = db
@@ -89,7 +90,8 @@ async def chat(
             response=result.get("response", "No response"),
             sources=result.get("sources", []),
             timestamp=result.get("timestamp", ""),
-            error=result.get("error")
+            error=result.get("error"),
+            message_ids=result.get("message_ids")
         )
     except Exception as e:
         import traceback
@@ -191,12 +193,135 @@ async def get_chat_suggestions(
         "What topics are trending in customer discussions?",
         "Compare sentiment across different platforms"
     ]
-    
+
     if session_id:
         suggestions.insert(0, "Summarize the key findings from this research")
         suggestions.insert(1, "What are the best hooks based on the data?")
-    
+
     return {"suggestions": suggestions}
+
+
+@router.get("/chat/history")
+async def get_chat_history(
+    session_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get chat message history for a session.
+
+    Returns all messages (user and assistant) in chronological order.
+    """
+    from ..models import ChatMessage as ChatMessageModel
+    from sqlalchemy import select
+
+    try:
+        result = await db.execute(
+            select(ChatMessageModel)
+            .where(ChatMessageModel.session_id == session_id)
+            .order_by(ChatMessageModel.created_at)
+        )
+        messages = result.scalars().all()
+
+        return {
+            "session_id": session_id,
+            "messages": [
+                {
+                    "id": m.id,
+                    "role": m.role,
+                    "content": m.content,
+                    "created_at": m.created_at.isoformat()
+                }
+                for m in messages
+            ],
+            "count": len(messages)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading chat history: {str(e)}")
+
+
+class SaveInsightRequest(BaseModel):
+    """Request to save a chat response as brand knowledge."""
+    session_id: int
+    brand_id: int
+    question: str
+    answer: str
+    label: str  # Short title for the insight
+
+
+@router.post("/chat/save-insight")
+async def save_insight(
+    request: SaveInsightRequest,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Save a chat response as Brand Knowledge.
+
+    This marks important insights from the chat as persistent, cross-session knowledge
+    that will be loaded as context in future sessions for the same brand.
+    """
+    from ..models import BrandKnowledge
+
+    try:
+        knowledge = BrandKnowledge(
+            brand_id=request.brand_id,
+            session_id=request.session_id,
+            question=request.question,
+            answer=request.answer,
+            label=request.label
+        )
+        db.add(knowledge)
+        await db.commit()
+
+        return {
+            "success": True,
+            "message": "Insight saved to brand knowledge base",
+            "knowledge_id": knowledge.id,
+            "label": knowledge.label
+        }
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error saving insight: {str(e)}")
+
+
+@router.get("/brand/{brand_id}/knowledge")
+async def get_brand_knowledge(
+    brand_id: int,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Get all accumulated Brand Knowledge for a brand.
+
+    This returns all saved insights across all sessions for the brand,
+    which are used as context in future research sessions.
+    """
+    from ..models import BrandKnowledge
+    from sqlalchemy import select
+
+    try:
+        result = await db.execute(
+            select(BrandKnowledge)
+            .where(BrandKnowledge.brand_id == brand_id)
+            .order_by(BrandKnowledge.saved_at.desc())
+        )
+        knowledge = result.scalars().all()
+
+        return {
+            "brand_id": brand_id,
+            "knowledge": [
+                {
+                    "id": k.id,
+                    "question": k.question,
+                    "answer": k.answer,
+                    "label": k.label,
+                    "source_session_id": k.session_id,
+                    "saved_at": k.saved_at.isoformat()
+                }
+                for k in knowledge
+            ],
+            "count": len(knowledge)
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error loading brand knowledge: {str(e)}")
 
 
 # ============== AnythingLLM Integration ==============

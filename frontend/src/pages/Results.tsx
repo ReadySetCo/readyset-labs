@@ -41,6 +41,7 @@ type Tab = 'dna' | 'insights' | 'ads' | 'social' | 'generated' | 'trends' | 'hoo
 export default function Results() {
   const { sessionId } = useParams<{ sessionId: string }>();
   const [activeTab, setActiveTab] = useState<Tab>('dna');
+  const [exportFormat, setExportFormat] = useState('full');
 
   const { data: result, isLoading, error } = useQuery({
     queryKey: ['result', sessionId],
@@ -85,18 +86,37 @@ export default function Results() {
           </div>
         </div>
 
-        <button
-          onClick={() => {
-            const link = document.createElement('a');
-            link.href = `/api/research/session/${sessionId}/export`;
-            link.download = `${brand.name.toLowerCase().replace(/\s+/g, '-')}-research-export.md`;
-            link.click();
-          }}
-          className="btn-secondary flex items-center gap-2"
-        >
-          <Download className="w-4 h-4" />
-          Export Report
-        </button>
+        <div className="flex items-center gap-2">
+          <select
+            value={exportFormat}
+            onChange={(e) => setExportFormat(e.target.value)}
+            className="bg-gray-800 border border-gray-600 text-gray-200 text-sm rounded px-2 py-2 focus:outline-none focus:border-blue-500"
+          >
+            <option value="full">Full Report</option>
+            <option value="raw_reviews">Raw Reviews</option>
+            <option value="ctp">CTP Personas</option>
+            <option value="hypothesis">Hypothesis Layer</option>
+          </select>
+          <button
+            onClick={() => {
+              const safeName = brand.name.toLowerCase().replace(/\s+/g, '-');
+              const filenames: Record<string, string> = {
+                full: `${safeName}-research-export.md`,
+                raw_reviews: `${safeName}-raw-reviews.md`,
+                ctp: `${safeName}-ctp-personas.md`,
+                hypothesis: `${safeName}-hypothesis-layer.md`,
+              };
+              const link = document.createElement('a');
+              link.href = `/api/research/session/${sessionId}/export?format=${exportFormat}`;
+              link.download = filenames[exportFormat] || `${safeName}-export.md`;
+              link.click();
+            }}
+            className="btn-secondary flex items-center gap-2"
+          >
+            <Download className="w-4 h-4" />
+            Export
+          </button>
+        </div>
       </div>
 
       {/* Stats */}

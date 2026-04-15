@@ -123,7 +123,11 @@ class ScrapedData(Base):
     
     # Language cues (repeated phrases, slang, emotional words)
     language_cues = Column(JSON, nullable=True)
-    
+
+    # General Stance (CTP classification)
+    general_stance = Column(String(100), nullable=True)  # fatalist, skeptic, bio_hacker, etc.
+    stance_confidence = Column(Float, nullable=True)  # 0.0 - 1.0
+
     # Raw data
     raw_data = Column(JSON, nullable=True)
     
@@ -210,7 +214,12 @@ class Insight(Base):
     proto_icps = Column(JSON, nullable=True)  # Clustered ICP candidates
     proto_icp_recommendations = Column(JSON, nullable=True)  # Top 3 recommended
     proto_icp_stats = Column(JSON, nullable=True)  # Summary stats
-    
+
+    # Creative Target Personas (CTP) - grouped by General Stance
+    ctp_data = Column(JSON, nullable=True)  # Full CTP structures list
+    ctp_hypothesis = Column(JSON, nullable=True)  # Hypothesis layer per CTP
+    ctp_stats = Column(JSON, nullable=True)  # Summary stats
+
     # Full report
     full_report = Column(Text, nullable=True)
     
@@ -261,4 +270,41 @@ class SavedIdea(Base):
     # Relationships
     brand = relationship("Brand", backref="saved_ideas")
     session = relationship("ResearchSession", backref="saved_ideas")
+
+
+class ChatMessage(Base):
+    """Persistent chat message history."""
+    __tablename__ = "chat_messages"
+
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("research_sessions.id"), nullable=False)
+    role = Column(String(20), nullable=False)  # "user" or "assistant"
+    content = Column(Text, nullable=False)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    session = relationship("ResearchSession", backref="chat_messages")
+
+
+class BrandKnowledge(Base):
+    """Brand-level accumulated knowledge from chat insights."""
+    __tablename__ = "brand_knowledge"
+
+    id = Column(Integer, primary_key=True, index=True)
+    brand_id = Column(Integer, ForeignKey("brands.id"), nullable=False)
+    session_id = Column(Integer, ForeignKey("research_sessions.id"), nullable=True)  # Source session for traceability
+
+    # The original question and answer
+    question = Column(Text, nullable=False)
+    answer = Column(Text, nullable=False)
+
+    # User-provided label for this insight
+    label = Column(String(255), nullable=False)
+
+    # Timestamps
+    saved_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # Relationships
+    brand = relationship("Brand", backref="brand_knowledge")
+    session = relationship("ResearchSession", backref="brand_knowledge")
 

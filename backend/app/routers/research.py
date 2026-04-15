@@ -1134,11 +1134,19 @@ async def health_check(db: AsyncSession = Depends(get_db)):
 @router.get("/session/{session_id}/export")
 async def export_session_report(
     session_id: int,
+    format: str = "full",
     db: AsyncSession = Depends(get_db)
 ):
-    """Export comprehensive brand intelligence report as markdown."""
+    """
+    Export brand intelligence report as markdown.
+
+    Query params:
+        format: "full" (default 21-section report), "raw_reviews" (Output 1),
+                "ctp" (Output 2: CTP structures), "hypothesis" (Output 3: ad strategy)
+    """
     from fastapi.responses import Response
     from ..services.brand_export import build_export
+    from ..services.ctp_export import build_raw_reviews_export, build_ctp_export, build_hypothesis_export
 
     # Get session with insights
     from sqlalchemy.orm import selectinload
@@ -1159,12 +1167,15 @@ async def export_session_report(
     if not brand:
         raise HTTPException(status_code=404, detail="Brand not found")
 
-    # Get insight
-    if not session.insights:
-        raise HTTPException(status_code=404, detail="No insights for this session")
-    insight = session.insights[-1] if isinstance(session.insights, list) else session.insights
+    # Get insight (not needed for raw_reviews but needed for ctp/hypothesis/full)
+    insight = None
+    if session.insights:
+        insight = session.insights[-1] if isinstance(session.insights, list) else session.insights
 
-    # Get scraped data for raw verbatims export
+    if format != "raw_reviews" and not insight:
+        raise HTTPException(status_code=404, detail="No insights for this session")
+
+    # Get scraped data
     scraped_result = await db.execute(
         select(ScrapedData)
         .where(ScrapedData.session_id == session_id)
@@ -1172,14 +1183,27 @@ async def export_session_report(
     )
     scraped_data = list(scraped_result.scalars().all())
 
-    md = build_export(brand, insight, scraped_data)
     safe_name = brand.name.lower().replace(' ', '-')
+
+    # Route to the appropriate export renderer
+    if format == "raw_reviews":
+        md = build_raw_reviews_export(brand, scraped_data)
+        filename = f"{safe_name}-raw-reviews.md"
+    elif format == "ctp":
+        md = build_ctp_export(brand, insight, scraped_data)
+        filename = f"{safe_name}-ctp-personas.md"
+    elif format == "hypothesis":
+        md = build_hypothesis_export(brand, insight, scraped_data)
+        filename = f"{safe_name}-hypothesis-layer.md"
+    else:  # "full" or any other value
+        md = build_export(brand, insight, scraped_data)
+        filename = f"{safe_name}-research-export.md"
 
     return Response(
         content=md,
         media_type="text/markdown; charset=utf-8",
         headers={
-            "Content-Disposition": f'attachment; filename="{safe_name}-research-export.md"'
+            "Content-Disposition": f'attachment; filename="{filename}"'
         }
     )
 

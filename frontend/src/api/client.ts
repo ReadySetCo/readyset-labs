@@ -579,6 +579,7 @@ export interface ChatResponse {
   sources: Array<Record<string, any>>;
   timestamp: string;
   error?: string;
+  message_ids?: { user?: number; assistant?: number };
 }
 
 export interface Verbatim {
@@ -631,6 +632,64 @@ export const getChatSuggestions = async (session_id?: number): Promise<{ suggest
 
 export const clearChatHistory = async (session_id?: number, brand_id?: number): Promise<{ success: boolean }> => {
   const { data } = await api.post('/chat/clear', { session_id, brand_id });
+  return data;
+};
+
+export interface ChatHistoryMessage {
+  id: number;
+  role: 'user' | 'assistant';
+  content: string;
+  created_at: string;
+}
+
+export interface ChatHistoryResponse {
+  session_id: number;
+  messages: ChatHistoryMessage[];
+  count: number;
+}
+
+export const getChatHistory = async (session_id: number): Promise<ChatHistoryResponse> => {
+  const { data } = await api.get(`/chat/history?session_id=${session_id}`);
+  return data;
+};
+
+export interface SaveInsightRequest {
+  session_id: number;
+  brand_id: number;
+  question: string;
+  answer: string;
+  label: string;
+}
+
+export interface SaveInsightResponse {
+  success: boolean;
+  message: string;
+  knowledge_id: number;
+  label: string;
+}
+
+export const saveInsight = async (payload: SaveInsightRequest): Promise<SaveInsightResponse> => {
+  const { data } = await api.post('/chat/save-insight', payload);
+  return data;
+};
+
+export interface BrandKnowledge {
+  id: number;
+  question: string;
+  answer: string;
+  label: string;
+  source_session_id?: number;
+  saved_at: string;
+}
+
+export interface BrandKnowledgeResponse {
+  brand_id: number;
+  knowledge: BrandKnowledge[];
+  count: number;
+}
+
+export const getBrandKnowledge = async (brand_id: number): Promise<BrandKnowledgeResponse> => {
+  const { data } = await api.get(`/brand/${brand_id}/knowledge`);
   return data;
 };
 

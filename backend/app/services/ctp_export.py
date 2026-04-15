@@ -1,0 +1,547 @@
+# -*- coding: utf-8 -*-
+"""
+CTP Export Service.
+Generates three structured markdown exports:
+  Output 1 — Raw review data (for Claude Cowork Artifact)
+  Output 2 — Creative Target Persona structures
+  Output 3 — Hypothesis Layer & Ad Strategy
+"""
+from datetime import datetime
+from typing import Any, List, Dict
+import json
+
+
+# ── Output 1: Raw Reviews ─────────────────────────────────────────────────
+
+def build_raw_reviews_export(brand: Any, scraped_data: list = None) -> str:
+    """
+    Build clean structured raw reviews for Claude Cowork Artifact submission.
+    Groups by source, includes all intake tags, sorted by relevance.
+    """
+    raw_data = scraped_data or []
+    if not raw_data:
+        return f"# {brand.name} — Raw Review Data\n\n(no data available)\n"
+
+    # Filter to review-like sources
+    review_sources = {
+        'trustpilot', 'amazon', 'google_reviews', 'app_store', 'play_store',
+        'g2', 'capterra', 'site_review', 'reddit', 'forum', 'quora',
+        'youtube_comment', 'tiktok', 'instagram', 'twitter', 'other_review'
+    }
+
+    reviews = []
+    for item in raw_data:
+        st = (getattr(item, 'source_type', '') or '').lower()
+        content = (getattr(item, 'content', '') or '').strip()
+        if not content or len(content) < 20:
+            continue
+        if st not in review_sources and not content:
+            continue
+        reviews.append(item)
+
+    # Group by source_type
+    from collections import defaultdict
+    by_source = defaultdict(list)
+    for item in reviews:
+        st = getattr(item, 'source_type', 'unknown') or 'unknown'
+        by_source[st].append(item)
+
+    sources_list = ", ".join(sorted(by_source.keys()))
+
+    md = f"""# {brand.name} — Raw Review Data for Analysis
+
+*Exported: {datetime.now().strftime('%Y-%m-%d %H:%M')}*
+*Total Reviews: {len(reviews)}*
+*Sources: {sources_list}*
+
+---
+
+"""
+
+    max_per_source = 100
+
+    for source_type in sorted(by_source.keys()):
+        items = by_source[source_type]
+
+        # Sort by relevance_score desc, then sentiment_score desc
+        def sort_key(item):
+            rel = getattr(item, 'relevance_score', None) or 0
+            sent = abs(getattr(item, 'sentiment_score', None) or 0)
+            return (rel, sent)
+
+        items.sort(key=sort_key, reverse=True)
+
+        md += f"## Source: {source_type.replace('_', ' ').title()} ({len(items)} reviews)\n\n"
+
+        shown = items[:max_per_source]
+        for i, item in enumerate(shown, 1):
+            content = getattr(item, 'content', '') or ''
+            content_clean = content.replace('\n', ' ').strip()
+            rating = getattr(item, 'rating', None)
+            author = getattr(item, 'author', None) or ''
+            posted_at = getattr(item, 'posted_at', None)
+            source_url = getattr(item, 'source_url', None) or ''
+            sentiment = getattr(item, 'sentiment', None) or ''
+            sentiment_score = getattr(item, 'sentiment_score', None)
+            trigger = getattr(item, 'primary_trigger', None)
+            blocker = getattr(item, 'blocker_type', None)
+            outcome = getattr(item, 'desired_outcome_level', None)
+            proof = getattr(item, 'proof_type_trusted', None)
+            lang_cues = getattr(item, 'language_cues', None)
+            stance = getattr(item, 'general_stance', None)
+
+            md += f"### Review #{i}\n"
+            if rating:
+                md += f"- **Rating**: {rating}/5\n"
+            if author:
+                md += f"- **Author**: @{author}\n"
+            if posted_at:
+                md += f"- **Date**: {str(posted_at)[:10]}\n"
+            if source_url:
+                md += f"- **URL**: {source_url}\n"
+
+            sent_str = sentiment
+            if sentiment_score is not None:
+                sent_str += f" ({sentiment_score:+.2f})"
+            if sent_str:
+                md += f"- **Sentiment**: {sent_str}\n"
+
+            md += f"- **Content**: \"{content_clean}\"\n"
+
+            # Intake Engine tags
+            intake_parts = []
+            if trigger:
+                intake_parts.append(f"**Trigger**: {trigger}")
+            if blocker:
+                intake_parts.append(f"**Blocker**: {blocker}")
+            if outcome:
+                intake_parts.append(f"**Outcome Level**: {outcome}")
+            if proof:
+                intake_parts.append(f"**Proof Trusted**: {proof}")
+            if stance:
+                intake_parts.append(f"**Stance**: {stance}")
+            if lang_cues and isinstance(lang_cues, list):
+                intake_parts.append(f"**Language Cues**: {', '.join(lang_cues[:5])}")
+
+            if intake_parts:
+                md += "- " + " | ".join(intake_parts) + "\n"
+
+            md += "\n---\n\n"
+
+        if len(items) > max_per_source:
+            md += f"*... and {len(items) - max_per_source} more {source_type} reviews*\n\n"
+
+    md += f"""---
+
+*Generated by Brand Intelligence Scraper*
+*Export date: {datetime.now().strftime('%Y-%m-%d %H:%M')}*
+"""
+    return md
+
+
+# ── Output 2: CTP Structures ──────────────────────────────────────────────
+
+def build_ctp_export(brand: Any, insight: Any, scraped_data: list = None) -> str:
+    """
+    Build Creative Target Persona structures markdown.
+    Each CTP includes: name, weight, CD6 stance, product-anchored belief,
+    pain points, B/O prompts, kill signals, representative snippets.
+    """
+    ctp_data = getattr(insight, 'ctp_data', None) or []
+    ctp_stats = getattr(insight, 'ctp_stats', None) or {}
+
+    if not ctp_data:
+        return f"# {brand.name} — Creative Target Personas\n\n(no CTP data available — run a research session first)\n"
+
+    total_snippets = ctp_stats.get("total_snippets", sum(c.get("snippet_count", 0) for c in ctp_data))
+
+    md = f"""# {brand.name} — Creative Target Personas (CTPs)
+
+*Exported: {datetime.now().strftime('%Y-%m-%d %H:%M')}*
+*Total Reviews Analyzed: {total_snippets}*
+*CTPs Identified: {len(ctp_data)}*
+
+---
+
+## CTP Sizing Summary
+
+| CTP | Stance | Weight | % of Reviews | Snippets |
+|-----|--------|--------|-------------|----------|
+"""
+    for ctp in ctp_data:
+        name = ctp.get("ctp_name", "Unknown")
+        stance = ctp.get("general_stance", "")
+        weight = ctp.get("weight", 0)
+        pct = ctp.get("review_percentage", 0)
+        count = ctp.get("snippet_count", 0)
+        md += f"| {name} | {stance} | {weight}/10 | {pct:.0f}% | {count} |\n"
+
+    md += "\n---\n\n"
+
+    # Detailed CTP sections
+    for ctp in ctp_data:
+        ctp_id = ctp.get("ctp_id", "")
+        name = ctp.get("ctp_name", "Unknown")
+        weight = ctp.get("weight", 0)
+        stance = ctp.get("general_stance", "")
+        pct = ctp.get("review_percentage", 0)
+        count = ctp.get("snippet_count", 0)
+        cd6 = ctp.get("core_insight_general", "")
+        product_belief = ctp.get("core_insight_product_anchored", "")
+
+        md += f"## {ctp_id}: {name} (Weight: {weight}/10)\n\n"
+        md += f"**Stance**: {stance} | **Reviews**: {count} ({pct:.0f}% of total)\n\n"
+
+        if cd6:
+            md += f"**General Stance (CD6):** \"{cd6}\"\n\n"
+
+        if product_belief:
+            md += f"**Product-Anchored Belief:** \"{product_belief}\"\n\n"
+
+        # Pain Points
+        pain_points = ctp.get("pain_points", [])
+        if pain_points:
+            md += "### Pain Points\n\n"
+            for i, pp in enumerate(pain_points, 1):
+                if isinstance(pp, dict):
+                    text = pp.get("pain_point", str(pp))
+                    freq = pp.get("frequency", "")
+                    sources = pp.get("sources", [])
+                    freq_str = f" (mentioned {freq} times" if freq else ""
+                    if sources and isinstance(sources, list):
+                        freq_str += f" across {len(sources)} sources" if freq_str else f" ({len(sources)} sources"
+                    freq_str += ")" if freq_str else ""
+                    md += f"{i}. **{text}**{freq_str}\n"
+                else:
+                    md += f"{i}. {pp}\n"
+            md += "\n"
+
+        # Barriers / Objections
+        barriers = ctp.get("barriers_objections", [])
+        if barriers:
+            md += "### Barriers / Objections\n\n"
+            for i, bo in enumerate(barriers, 1):
+                if isinstance(bo, dict):
+                    prompt = bo.get("prompt", str(bo))
+                    bo_type = bo.get("type", "")
+                    evidence = bo.get("evidence", "")
+                    type_label = f" *[{bo_type}]*" if bo_type else ""
+                    md += f"{i}. **B/O Prompt {i}**: \"{prompt}\"{type_label}\n"
+                    if evidence:
+                        md += f"   - Evidence: {evidence}\n"
+                else:
+                    md += f"{i}. {bo}\n"
+            md += "\n"
+
+        # Kill Signals
+        kill_signals = ctp.get("kill_signals", {})
+        if kill_signals and any(kill_signals.values()):
+            md += "### Kill Signals\n\n"
+            md += "| Level | Signals |\n|-------|--------|\n"
+            for level in ["existence", "engagement", "conversion"]:
+                signals = kill_signals.get(level, [])
+                if signals and isinstance(signals, list):
+                    signals_str = "; ".join(signals)
+                else:
+                    signals_str = "(none identified)"
+                md += f"| **{level.title()}** | {signals_str} |\n"
+            md += "\n"
+
+        # Representative Snippets
+        snippets = ctp.get("representative_snippets", [])
+        if snippets:
+            md += f"### Supporting Evidence ({count} snippets, {pct:.0f}% of total)\n\n"
+            for s in snippets[:5]:
+                if isinstance(s, dict):
+                    content = s.get("content", "")[:300]
+                    source_type = s.get("source_type", "")
+                    source_url = s.get("source_url", "")
+                    sentiment = s.get("sentiment", "")
+                    score = s.get("sentiment_score")
+                    score_str = f" ({score:+.2f})" if score is not None else ""
+
+                    md += f'> "{content}"\n'
+                    meta = []
+                    if source_type:
+                        meta.append(source_type)
+                    if sentiment:
+                        meta.append(f"{sentiment}{score_str}")
+                    if source_url:
+                        meta.append(f"[source]({source_url})")
+                    if meta:
+                        md += f"> — *{' | '.join(meta)}*\n"
+                    md += "\n"
+
+        # Source Distribution
+        source_dist = ctp.get("source_distribution", {})
+        if source_dist:
+            md += "### Source Distribution\n\n"
+            for src, cnt in sorted(source_dist.items(), key=lambda x: x[1], reverse=True):
+                md += f"- {src}: {cnt}\n"
+            md += "\n"
+
+        md += "---\n\n"
+
+    md += f"""*Generated by Brand Intelligence Scraper*
+*Export date: {datetime.now().strftime('%Y-%m-%d %H:%M')}*
+"""
+    return md
+
+
+# ── Output 3: Hypothesis Layer ─────────────────────────────────────────────
+
+def build_hypothesis_export(brand: Any, insight: Any, scraped_data: list = None) -> str:
+    """
+    Build Hypothesis Layer & Ad Strategy markdown.
+    Per CTP: demographics, angles (CD7), funnel stage (CD8),
+    framework (CD10), visual style (CD11), narrative driver (CD12),
+    tone (CD13), emotion (CD14), plus ad library cross-reference.
+    """
+    ctp_data = getattr(insight, 'ctp_data', None) or []
+    ctp_hypothesis = getattr(insight, 'ctp_hypothesis', None) or []
+    ad_library_data = getattr(insight, 'ad_library_data', None)
+
+    if not ctp_data:
+        return f"# {brand.name} — Hypothesis Layer\n\n(no CTP data available — run a research session first)\n"
+
+    # Build hypothesis lookup by ctp_id
+    hyp_by_id = {}
+    for h in ctp_hypothesis:
+        if isinstance(h, dict):
+            hyp_by_id[h.get("ctp_id", "")] = h
+
+    ads_count = len(ad_library_data) if isinstance(ad_library_data, list) else 0
+
+    md = f"""# {brand.name} — Hypothesis Layer & Ad Strategy
+
+*Exported: {datetime.now().strftime('%Y-%m-%d %H:%M')}*
+*CTPs: {len(ctp_data)} | Ads Analyzed: {ads_count}*
+
+> **Note:** This hypothesis layer is a SUGGESTION for the Creative Strategist to validate at onboarding. Fields marked with [hypothesis] are inferred from data patterns, not confirmed.
+
+---
+
+"""
+
+    for ctp in ctp_data:
+        ctp_id = ctp.get("ctp_id", "")
+        ctp_name = ctp.get("ctp_name", "Unknown")
+        weight = ctp.get("weight", 0)
+        cd6 = ctp.get("core_insight_general", "")
+        hyp = hyp_by_id.get(ctp_id, {})
+
+        md += f"## {ctp_id}: {ctp_name} (Weight: {weight}/10)\n\n"
+        if cd6:
+            md += f"**General Stance (CD6):** \"{cd6}\"\n\n"
+
+        # Demographic Variables
+        demo = hyp.get("demographic_variables", {})
+        if demo and isinstance(demo, dict):
+            md += "### Demographic Variables\n\n"
+            for field, label in [
+                ("age_range", "Age Range"),
+                ("gender_skew", "Gender Skew"),
+                ("income_level", "Income Level"),
+                ("education", "Education"),
+                ("platform_affinity", "Platform Affinity"),
+                ("geo_notes", "Geographic Notes")
+            ]:
+                val = demo.get(field)
+                if val:
+                    if isinstance(val, list):
+                        val = ", ".join(val)
+                    md += f"- **{label}**: {val}\n"
+            md += "\n"
+
+        # Angles (CD7)
+        angles = hyp.get("angles", [])
+        if angles:
+            md += "### Angles (CD7)\n\n"
+            for i, angle in enumerate(angles, 1):
+                if isinstance(angle, dict):
+                    name = angle.get("angle_name", f"Angle {i}")
+                    desc = angle.get("angle_description", "")
+                    vtag = angle.get("validation_tag", "hypothesis")
+                    evidence = angle.get("validation_evidence", "")
+                    md += f"{i}. **\"{name}\"** — Validation: {vtag.replace('_', ' ').title()}"
+                    if evidence:
+                        md += f" ({evidence})"
+                    md += "\n"
+                    if desc:
+                        md += f"   {desc}\n"
+                else:
+                    md += f"{i}. {angle}\n"
+            md += "\n"
+
+        # Funnel Stage (CD8)
+        funnel = hyp.get("funnel_stage", {})
+        if funnel and isinstance(funnel, dict):
+            stage = funnel.get("stage", "unknown")
+            rationale = funnel.get("rationale", "")
+            md += "### Funnel Stage (CD8)\n\n"
+            md += f"**{stage.title()}**"
+            if rationale:
+                md += f" — {rationale}"
+            md += "\n\n"
+
+        # Framework / Tactic (CD10)
+        fw = hyp.get("framework_tactic", {})
+        if fw and isinstance(fw, dict):
+            md += "### Framework / Tactic (CD10)\n\n"
+            primary = fw.get("primary", "")
+            secondary = fw.get("secondary", "")
+            rationale = fw.get("rationale", "")
+            if primary:
+                md += f"**Primary**: {primary}\n"
+            if secondary:
+                md += f"**Secondary**: {secondary}\n"
+            if rationale:
+                md += f"**Rationale**: {rationale}\n"
+            md += "\n"
+
+        # Visual Style (CD11)
+        vs = hyp.get("visual_style", {})
+        if vs and isinstance(vs, dict):
+            md += "### Visual Style (CD11)\n\n"
+            md += f"**{vs.get('style', 'N/A')}**"
+            if vs.get("rationale"):
+                md += f" — {vs['rationale']}"
+            md += "\n\n"
+
+        # Narrative Driver (CD12)
+        nd = hyp.get("narrative_driver", {})
+        if nd and isinstance(nd, dict):
+            md += "### Narrative Driver (CD12)\n\n"
+            md += f"**{nd.get('driver', 'N/A')}**"
+            if nd.get("rationale"):
+                md += f" — {nd['rationale']}"
+            md += "\n\n"
+
+        # Tone (CD13)
+        tone = hyp.get("tone", {})
+        if tone and isinstance(tone, dict):
+            md += "### Tone (CD13)\n\n"
+            primary = tone.get("primary", "")
+            secondary = tone.get("secondary", "")
+            parts = [p for p in [primary, secondary] if p]
+            md += f"**{' + '.join(parts)}**" if parts else "**N/A**"
+            if tone.get("rationale"):
+                md += f" — {tone['rationale']}"
+            md += "\n\n"
+
+        # Emotion (CD14)
+        emotion = hyp.get("emotion", {})
+        if emotion and isinstance(emotion, dict):
+            md += "### Emotion (CD14)\n\n"
+            arc = emotion.get("arc", "")
+            primary_em = emotion.get("primary_emotion", "")
+            if arc:
+                md += f"**Emotional Arc**: {arc}\n"
+            if primary_em:
+                md += f"**Lead Emotion**: {primary_em}\n"
+            if emotion.get("rationale"):
+                md += f"**Rationale**: {emotion['rationale']}\n"
+            md += "\n"
+
+        # Ad Library Cross-Reference
+        if ads_count > 0:
+            md += _build_ad_cross_reference(ctp, ad_library_data)
+
+        md += "---\n\n"
+
+    md += f"""*Generated by Brand Intelligence Scraper*
+*Export date: {datetime.now().strftime('%Y-%m-%d %H:%M')}*
+"""
+    return md
+
+
+def _build_ad_cross_reference(ctp: Dict[str, Any], ad_library_data: Any) -> str:
+    """Build ad library cross-reference section for a CTP."""
+    if not ad_library_data or not isinstance(ad_library_data, list):
+        return ""
+
+    ctp_name = ctp.get("ctp_name", "")
+    pain_points = [p.get("pain_point", "") if isinstance(p, dict) else str(p)
+                   for p in ctp.get("pain_points", [])]
+    stance = ctp.get("general_stance", "")
+
+    # Find matching ads by checking persona/emotion/pain point overlap
+    matching_ads = []
+    for ad in ad_library_data:
+        if not isinstance(ad, dict):
+            continue
+
+        score = 0
+        match_reasons = []
+
+        # Check persona match
+        ad_persona = str(ad.get("target_persona", "") or "").lower()
+        if stance in ad_persona or ctp_name.lower() in ad_persona:
+            score += 3
+            match_reasons.append("persona")
+
+        # Check pain point overlap
+        ad_pain = str(ad.get("pain_points", "") or ad.get("pain_point_addressed", "") or "").lower()
+        for pp in pain_points:
+            if pp.lower() in ad_pain:
+                score += 2
+                match_reasons.append("pain point")
+                break
+
+        # Check emotion/tone overlap
+        ad_emotion = str(ad.get("emotion", "") or "").lower()
+        ad_tone = str(ad.get("tone", "") or "").lower()
+        if any(kw in ad_emotion or kw in ad_tone for kw in [stance, "trust", "proof", "fear"]):
+            score += 1
+            match_reasons.append("emotion/tone")
+
+        if score >= 2:
+            matching_ads.append({
+                "ad": ad,
+                "score": score,
+                "reasons": match_reasons
+            })
+
+    matching_ads.sort(key=lambda x: x["score"], reverse=True)
+
+    md = "### Ad Library Cross-Reference\n\n"
+
+    if matching_ads:
+        md += "| Ad | Angle Match | Framework | Hook Strength | Match Score |\n"
+        md += "|-----|------------|-----------|---------------|-------------|\n"
+
+        for match in matching_ads[:5]:
+            ad = match["ad"]
+            ad_id = ad.get("id", ad.get("ad_id", "?"))[:15]
+            angle = ad.get("messaging_angle", ad.get("angle_label", "—"))
+            if isinstance(angle, str):
+                angle = angle[:30]
+            framework = ad.get("framework", "—")
+            if isinstance(framework, str):
+                framework = framework[:20]
+            hook_str = str(ad.get("hook_strength", "—"))
+            score = match["score"]
+            md += f"| {ad_id} | {angle} | {framework} | {hook_str}/5 | {score} |\n"
+
+        md += "\n"
+    else:
+        md += "*No closely matching ads found in the library for this CTP.*\n\n"
+
+    # Gap analysis
+    if pain_points:
+        covered_pains = set()
+        for match in matching_ads:
+            ad = match["ad"]
+            ad_pain = str(ad.get("pain_points", "") or ad.get("pain_point_addressed", "") or "").lower()
+            for pp in pain_points:
+                if pp.lower() in ad_pain:
+                    covered_pains.add(pp)
+
+        uncovered = [pp for pp in pain_points if pp not in covered_pains]
+        if uncovered:
+            md += "**Gap Analysis** — Pain points with no matching ads:\n"
+            for pp in uncovered[:5]:
+                md += f"- {pp}\n"
+            md += "\n"
+
+    return md

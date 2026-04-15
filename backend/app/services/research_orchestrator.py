@@ -34,6 +34,8 @@ from .social_video_analyzer import SocialVideoAnalyzer
 from .sentiment import classify_sentiment, get_sentiment_analyzer
 from .snippet_classifier import SnippetClassifier
 from .proto_icp_builder import ProtoICPBuilder, build_proto_icps
+from .stance_classifier import StanceClassifier
+from .ctp_builder import build_ctps
 from .kb_exporter import get_kb_exporter
 from .anythingllm import sync_brand_to_workspace
 from .knowledge_synthesizer import get_knowledge_synthesizer
@@ -119,6 +121,7 @@ class ResearchOrchestrator:
         self.social_video_analyzer = SocialVideoAnalyzer()
         self.snippet_classifier = SnippetClassifier()
         self.proto_icp_builder = ProtoICPBuilder()
+        self.stance_classifier = StanceClassifier()
         self.brand_extractor = BrandExtractor()
         
         # Progress tracking
@@ -860,7 +863,37 @@ class ResearchOrchestrator:
             except Exception as e:
                 print(f"    [!] Proto-ICP generation error: {str(e)[:80]}")
                 insights["proto_icps"] = []
-            
+
+            # Generate Creative Target Personas (CTP) from stance-based clustering
+            self._update_progress("insights", 3, 5, "Building Creative Target Personas...")
+            try:
+                ctp_result = await asyncio.wait_for(
+                    self.generate_ctps(
+                        session_id=session_id,
+                        brand_name=brand.name,
+                        sector=brand.sector or "",
+                        vertical=brand.vertical or "",
+                        existing_pain_points=insights.get("market_pain_points", []),
+                        ad_library_data=ad_library_results.get("brand_ads") if ad_library_results else None,
+                        ad_creative_patterns=ad_library_results.get("patterns") if ad_library_results else None
+                    ),
+                    timeout=600.0  # 10 min max for CTP generation
+                )
+                insights["ctp_data"] = ctp_result.get("ctps", [])
+                insights["ctp_hypothesis"] = ctp_result.get("hypothesis", [])
+                insights["ctp_stats"] = ctp_result.get("stats", {})
+                print(f"    [+] {len(ctp_result.get('ctps', []))} Creative Target Personas generated")
+            except asyncio.TimeoutError:
+                print("    [!] CTP generation timeout, skipping")
+                insights["ctp_data"] = []
+                insights["ctp_hypothesis"] = []
+                insights["ctp_stats"] = {}
+            except Exception as e:
+                print(f"    [!] CTP generation error: {str(e)[:80]}")
+                insights["ctp_data"] = []
+                insights["ctp_hypothesis"] = []
+                insights["ctp_stats"] = {}
+
             # Add Ad Library insights (with None checks)
             insights["ad_library_data"] = ad_library_results.get("brand_ads") if ad_library_results else None
             insights["competitor_ads_data"] = ad_library_results.get("competitor_ads") if ad_library_results else None
@@ -1188,7 +1221,8 @@ class ResearchOrchestrator:
                 'proto_icps', 'proto_icp_recommendations', 'proto_icp_stats', 'full_report',
                 'tiktok_trends',            # TikTok: Trending sounds, hashtags, content patterns
                 'hooks_library',            # Structured hooks library for creative briefs
-                'instagram_brand_presence'  # NEW: Brand voice, content pillars, archetype
+                'instagram_brand_presence', # Brand voice, content pillars, archetype
+                'ctp_data', 'ctp_hypothesis', 'ctp_stats'  # Creative Target Personas
             }
             filtered_insights = {k: v for k, v in sanitized_insights.items() if k in valid_insight_fields}
             
@@ -1425,7 +1459,32 @@ class ResearchOrchestrator:
             except Exception as e:
                 print(f"    [!] Proto-ICP generation error: {str(e)[:80]}")
                 insights["proto_icps"] = []
-            
+
+            # Generate Creative Target Personas (CTP) from stance-based clustering
+            print(f"    [+] Building Creative Target Personas...")
+            try:
+                ctp_result = await asyncio.wait_for(
+                    self.generate_ctps(
+                        session_id=session_id,
+                        brand_name=brand.name,
+                        sector=brand.sector or "",
+                        vertical=brand.vertical or "",
+                        existing_pain_points=insights.get("market_pain_points", []),
+                        ad_library_data=None,
+                        ad_creative_patterns=None
+                    ),
+                    timeout=600.0
+                )
+                insights["ctp_data"] = ctp_result.get("ctps", [])
+                insights["ctp_hypothesis"] = ctp_result.get("hypothesis", [])
+                insights["ctp_stats"] = ctp_result.get("stats", {})
+                print(f"    [+] {len(ctp_result.get('ctps', []))} Creative Target Personas generated")
+            except Exception as e:
+                print(f"    [!] CTP generation error: {str(e)[:80]}")
+                insights["ctp_data"] = []
+                insights["ctp_hypothesis"] = []
+                insights["ctp_stats"] = {}
+
             # =============================================
             # STEP 4: Run content generators in parallel
             # =============================================
@@ -1562,16 +1621,20 @@ class ResearchOrchestrator:
                 proto_icps=insights.get("proto_icps"),
                 proto_icp_recommendations=insights.get("proto_icp_recommendations"),
                 proto_icp_stats=insights.get("proto_icp_stats"),
+                # Creative Target Personas
+                ctp_data=insights.get("ctp_data"),
+                ctp_hypothesis=insights.get("ctp_hypothesis"),
+                ctp_stats=insights.get("ctp_stats"),
                 full_report=insights.get("full_report"),
                 created_at=datetime.now()
             )
             self.db.add(insight_record)
-            
+
             # Update session
             session.status = "completed"
             session.completed_at = datetime.now()
             await self.db.commit()
-            
+
             # Export to knowledge base for Open WebUI
             try:
                 self._log("Exporting scraped data to local knowledge base...", source="KB Export")
@@ -4150,3 +4213,125 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
             self._log(f"[Proto-ICP] Recommended: {cluster['cluster_id']} ({cluster['trigger_label']} × {cluster['blocker_label']}) - Score: {rec['score']}")
         
         return proto_icp_result
+
+    async def generate_ctps(
+        self,
+        session_id: int,
+        brand_name: str,
+        sector: str = "",
+        vertical: str = "",
+        existing_pain_points: List[str] = None,
+        ad_library_data: Any = None,
+        ad_creative_patterns: Any = None
+    ) -> Dict[str, Any]:
+        """
+        Generate Creative Target Personas (CTPs) from VoC data.
+
+        1. Collects classified snippets from DB (reuses intake engine tags)
+        2. Runs stance classification (batch) — adds general_stance per snippet
+        3. Updates DB with stance labels
+        4. Builds CTPs by clustering on general_stance
+        5. Generates hypothesis layer (one LLM call per CTP)
+
+        Args:
+            session_id: Research session ID
+            brand_name: Brand name for LLM context
+            sector: Brand sector
+            vertical: Brand vertical
+            existing_pain_points: Pain points from insights generation
+            ad_library_data: Analyzed ads data (for hypothesis cross-reference)
+            ad_creative_patterns: Aggregated ad patterns
+
+        Returns:
+            Dict with ctps, hypothesis, and stats
+        """
+        self._log(f"[CTP] Starting Creative Target Persona generation for {brand_name}")
+
+        # Step 1: Collect VoC snippets from database
+        voc_source_types = [
+            'trustpilot', 'reddit', 'site_review', 'amazon', 'app_store',
+            'google_reviews', 'comment', 'forum', 'quora', 'youtube_comment',
+            'g2', 'capterra', 'other_review', 'tiktok', 'instagram', 'twitter'
+        ]
+
+        result = await self.db.execute(
+            select(ScrapedData).where(
+                ScrapedData.session_id == session_id,
+                ScrapedData.source_type.in_(voc_source_types),
+                ScrapedData.content.isnot(None)
+            )
+        )
+        scraped_items = result.scalars().all()
+
+        self._log(f"[CTP] Found {len(scraped_items)} VoC snippets")
+
+        if not scraped_items:
+            self._log("[CTP] No VoC data found, skipping CTP generation")
+            return {"ctps": [], "hypothesis": [], "stats": {"total_ctps": 0, "total_snippets": 0}}
+
+        # Step 2: Format snippets with existing intake tags as context
+        snippets_for_stance = []
+        for item in scraped_items:
+            content = item.content or ""
+            if len(content.strip()) < 20:
+                continue
+
+            snippets_for_stance.append({
+                "id": item.id,
+                "content": content[:500],
+                "source_type": item.source_type,
+                "source_url": item.source_url or "",
+                "sentiment": item.sentiment or "",
+                "sentiment_score": item.sentiment_score,
+                "primary_trigger": item.primary_trigger or "",
+                "blocker_type": item.blocker_type or "",
+                "desired_outcome_level": item.desired_outcome_level or "",
+                "proof_type_trusted": item.proof_type_trusted or "",
+                "language_cues": item.language_cues or [],
+                "context": item.title or brand_name
+            })
+
+        self._log(f"[CTP] Classifying {len(snippets_for_stance)} snippets by stance...")
+
+        # Step 3: Run stance classification (batch)
+        stance_classified = await self.stance_classifier.classify_batch(
+            snippets_for_stance,
+            batch_size=10
+        )
+
+        successful = sum(1 for s in stance_classified if s.get("general_stance") and s["general_stance"] != "unknown")
+        self._log(f"[CTP] Successfully stance-classified {successful}/{len(stance_classified)} snippets")
+
+        # Step 4: Update database with stance labels
+        updated = 0
+        for classified_dict in stance_classified:
+            if classified_dict.get("general_stance"):
+                snippet_id = classified_dict.get("id")
+                if snippet_id:
+                    for item in scraped_items:
+                        if item.id == snippet_id:
+                            item.general_stance = classified_dict["general_stance"]
+                            item.stance_confidence = classified_dict.get("stance_confidence")
+                            updated += 1
+                            break
+
+        await self.db.commit()
+        self._log(f"[CTP] Updated {updated} snippets with stance labels in database")
+
+        # Step 5: Build CTPs and hypothesis layer
+        ctp_result = await build_ctps(
+            classified_snippets=stance_classified,
+            brand_name=brand_name,
+            sector=sector,
+            vertical=vertical,
+            existing_pain_points=existing_pain_points,
+            ad_library_data=ad_library_data,
+            ad_creative_patterns=ad_creative_patterns
+        )
+
+        self._log(f"[CTP] Generated {ctp_result['stats']['total_ctps']} CTPs")
+
+        for ctp in ctp_result.get("ctps", [])[:5]:
+            self._log(f"[CTP] {ctp['ctp_id']}: {ctp['ctp_name']} (weight={ctp['weight']}, {ctp['snippet_count']} snippets)")
+
+        return ctp_result

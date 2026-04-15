@@ -17,7 +17,7 @@ from sqlalchemy import select, func
 
 from .research_api import ResearchAPI, ResearchPack
 from .llm.client import get_llm_client
-from ..models import ScrapedData, Insight, Brand, ResearchSession
+from ..models import ScrapedData, Insight, Brand, ResearchSession, ChatMessage, BrandKnowledge
 
 # Setup logging
 logging.basicConfig(level=logging.INFO, stream=sys.stdout, force=True)
@@ -51,9 +51,11 @@ RULES:
 class ChatbotService:
     """AI Chatbot with full-context data loading."""
 
-    def __init__(self, db: AsyncSession):
+    def __init__(self, db: AsyncSession, brand_id: Optional[int] = None, session_id: Optional[int] = None):
         self.db = db
         self.api = ResearchAPI(db)
+        self.brand_id = brand_id
+        self.session_id = session_id
         # Use dedicated chat model (large context, stable)
         from ..config import settings
         self.llm = get_llm_client(provider="gemini")
@@ -67,6 +69,54 @@ class ChatbotService:
         self.current_pack: Optional[ResearchPack] = None
         self._context_cache: Dict[int, str] = {}  # session_id -> context string
 
+    async def save_message(self, session_id: int, role: str, content: str) -> Optional[int]:
+        """Persist a chat message to the database. Returns the message ID."""
+        try:
+            msg = ChatMessage(session_id=session_id, role=role, content=content)
+            self.db.add(msg)
+            await self.db.commit()
+            await self.db.refresh(msg)  # Refresh to get the ID
+            logger.info(f"[Chat] Saved {role} message (id={msg.id}) for session {session_id}")
+            return msg.id
+        except Exception as e:
+            logger.error(f"[Chat] Error saving message: {e}")
+            await self.db.rollback()
+            return None
+
+    async def load_chat_history(self, session_id: int) -> None:
+        """Load chat history from DB for the given session."""
+        try:
+            result = await self.db.execute(
+                select(ChatMessage)
+                .where(ChatMessage.session_id == session_id)
+                .order_by(ChatMessage.created_at)
+            )
+            messages = result.scalars().all()
+            self.conversation_history = [
+                {"role": msg.role, "content": msg.content}
+                for msg in messages
+            ]
+            logger.info(f"[Chat] Loaded {len(messages)} historical messages for session {session_id}")
+        except Exception as e:
+            logger.error(f"[Chat] Error loading chat history: {e}")
+
+    async def get_brand_knowledge(self, brand_id: int) -> List[Dict[str, str]]:
+        """Load accumulated Brand Knowledge for the given brand."""
+        try:
+            result = await self.db.execute(
+                select(BrandKnowledge)
+                .where(BrandKnowledge.brand_id == brand_id)
+                .order_by(BrandKnowledge.saved_at.desc())
+            )
+            knowledge = result.scalars().all()
+            return [
+                {"question": k.question, "answer": k.answer, "label": k.label}
+                for k in knowledge
+            ]
+        except Exception as e:
+            logger.error(f"[Chat] Error loading brand knowledge: {e}")
+            return []
+
     async def chat(
         self,
         message: str,
@@ -78,6 +128,12 @@ class ChatbotService:
 
         if not session_id:
             return self._response("Please open a research session to use the chat. I need data to work with.")
+
+        # Load chat history if not already loaded (only once per session)
+        if not self.conversation_history and self.session_id != session_id:
+            await self.load_chat_history(session_id)
+            self.session_id = session_id
+            self.brand_id = brand_id
 
         # === LOAD RESEARCH PACK (for status check) ===
         try:
@@ -143,11 +199,20 @@ Answer based ONLY on the research data above. Cite sources with exact quotes whe
             if not response:
                 return self._response("I couldn't generate a response. Please try rephrasing.")
 
-            # Update conversation history
+            # Update conversation history and persist to DB
             self.conversation_history.append({"role": "user", "content": message})
             self.conversation_history.append({"role": "assistant", "content": response})
 
-            return self._response(response, context_source=context_source)
+            # Save to database and capture IDs
+            user_msg_id = await self.save_message(session_id, "user", message)
+            assistant_msg_id = await self.save_message(session_id, "assistant", response)
+
+            result = self._response(response, context_source=context_source)
+            result["message_ids"] = {
+                "user": user_msg_id,
+                "assistant": assistant_msg_id
+            }
+            return result
 
         except asyncio.TimeoutError:
             logger.warning("[Chat] LLM timeout (120s)")
@@ -286,6 +351,17 @@ Answer based ONLY on the research data above. Cite sources with exact quotes whe
         parts.append(f"Sources: {', '.join(stats.get('sources', []))}")
         if stats.get('sentiment_avg') is not None:
             parts.append(f"Average sentiment score: {stats['sentiment_avg']:.3f}")
+
+        # === 5. BRAND KNOWLEDGE BASE (accumulated insights from previous sessions) ===
+        if self.brand_id:
+            brand_knowledge = await self.get_brand_knowledge(self.brand_id)
+            if brand_knowledge:
+                parts.append(f"\n\n# Brand Knowledge Base (accumulated insights from previous sessions)")
+                for i, kb in enumerate(brand_knowledge, 1):
+                    parts.append(f"\n**[Insight {i}]** {kb['label']}")
+                    parts.append(f"**Q:** {kb['question']}")
+                    parts.append(f"**A:** {kb['answer']}")
+                logger.info(f"[Chat] Loaded {len(brand_knowledge)} brand knowledge items")
 
         context = "\n".join(parts)
 
