@@ -34,6 +34,7 @@ class Brand(Base):
     brand_images = Column(JSON, nullable=True)  # URLs of representative brand images
     social_media_urls = Column(JSON, nullable=True)  # {"twitter": "...", "instagram": "...", ...}
     ad_library_page_id = Column(String(50), nullable=True)  # Facebook Ad Library page ID (e.g., "645468212198661")
+    ad_library_url = Column(String(500), nullable=True)  # Manual Ad Library URL override (bypasses auto-discovery)
     product_descriptions = Column(JSON, nullable=True)  # [{"name": "Product A", "description": "..."}]
     
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
@@ -219,6 +220,15 @@ class Insight(Base):
     ctp_data = Column(JSON, nullable=True)  # Full CTP structures list
     ctp_hypothesis = Column(JSON, nullable=True)  # Hypothesis layer per CTP
     ctp_stats = Column(JSON, nullable=True)  # Summary stats
+
+    # UGC Creator Briefs
+    ugc_briefs = Column(JSON, nullable=True)  # UGC creator briefs for external creators
+
+    # Full Funnel Creative Strategy
+    funnel_strategy = Column(JSON, nullable=True)  # Full funnel strategy with 90-day roadmap
+
+    # Post-Purchase Survey
+    post_purchase_survey = Column(JSON, nullable=True)  # Survey questions for creative intelligence
 
     # Full report
     full_report = Column(Text, nullable=True)

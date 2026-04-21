@@ -22,7 +22,8 @@ async def create_brand(
     """Create a new brand to research."""
     brand = Brand(
         name=brand_data.name,
-        website_url=brand_data.website_url
+        website_url=brand_data.website_url,
+        ad_library_url=brand_data.ad_library_url,
     )
     db.add(brand)
     await db.commit()

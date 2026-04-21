@@ -21,6 +21,7 @@ import {
   Play,
   Sparkles,
   Flame,
+  Layers,
 } from 'lucide-react';
 import { getFullResearchResult } from '../api/client';
 import ChatPanel from '../components/ChatPanel';
@@ -31,11 +32,13 @@ import BrandDNAView from '../components/BrandDNAView';
 import InsightsView from '../components/InsightsView';
 import AdIntelligenceView from '../components/AdIntelligenceView';
 import GeneratedContentView from '../components/GeneratedContentView';
+import FunnelStrategyView from '../components/FunnelStrategyView';
+import CTPView from '../components/CTPView';
 import SocialMediaView from '../components/SocialMediaView';
 import DataView from '../components/DataView';
 import SentimentView from '../components/SentimentView';
 
-type Tab = 'dna' | 'insights' | 'ads' | 'social' | 'generated' | 'trends' | 'hooks' | 'sentiment' | 'data' | 'report';
+type Tab = 'dna' | 'insights' | 'ads' | 'generated' | 'strategy' | 'ctps' | 'social' | 'trends' | 'hooks' | 'sentiment' | 'data' | 'report';
 
 
 export default function Results() {
@@ -179,6 +182,20 @@ export default function Results() {
             Generated Content
           </TabButton>
           <TabButton
+            active={activeTab === 'ctps'}
+            onClick={() => setActiveTab('ctps')}
+            icon={<Users className="w-4 h-4" />}
+          >
+            Creative Target Personas
+          </TabButton>
+          <TabButton
+            active={activeTab === 'strategy'}
+            onClick={() => setActiveTab('strategy')}
+            icon={<Layers className="w-4 h-4" />}
+          >
+            Funnel Strategy
+          </TabButton>
+          <TabButton
             active={activeTab === 'social'}
             onClick={() => setActiveTab('social')}
             icon={<Play className="w-4 h-4" />}
@@ -238,6 +255,18 @@ export default function Results() {
 
       {activeTab === 'generated' && insights && (
         <GeneratedContentView insights={insights} sessionId={Number(sessionId)} />
+      )}
+
+      {activeTab === 'ctps' && insights && (
+        <CTPView
+          ctps={(insights as any).ctp_data || []}
+          hypothesis={(insights as any).ctp_hypothesis || []}
+          stats={(insights as any).ctp_stats || {}}
+        />
+      )}
+
+      {activeTab === 'strategy' && insights && (
+        <FunnelStrategyView strategy={(insights as any).funnel_strategy} />
       )}
 
       {activeTab === 'social' && (

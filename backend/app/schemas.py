@@ -56,10 +56,16 @@ class BrandCreate(BaseModel):
     """Schema for creating a new brand."""
     name: str = Field(..., min_length=1, max_length=255, description="Brand name")
     website_url: Optional[str] = Field(None, description="Brand website URL")
-    
-    @field_validator("website_url")
+    ad_library_url: Optional[str] = Field(
+        None,
+        description="Direct Ad Library URL (overrides auto-discovery). "
+        "Paste the URL the user sees in the browser for this advertiser, "
+        "e.g. https://www.facebook.com/ads/library/?view_all_page_id=...",
+    )
+
+    @field_validator("website_url", "ad_library_url")
     @classmethod
-    def validate_website_url(cls, v: Optional[str]) -> Optional[str]:
+    def validate_url(cls, v: Optional[str]) -> Optional[str]:
         if v is None or v.strip() == "":
             return None
         v = v.strip()
@@ -90,12 +96,13 @@ class BrandResponse(BaseModel):
     id: int
     name: str
     website_url: Optional[str]
+    ad_library_url: Optional[str] = None
     description: Optional[str]
     sector: Optional[str]
     vertical: Optional[str]
     products: Optional[List[str]]
     target_audience: Optional[str]
-    
+
     # Brand DNA fields
     brand_colors: Optional[List[str]] = None
     tagline: Optional[str] = None
@@ -107,7 +114,7 @@ class BrandResponse(BaseModel):
     brand_images: Optional[List[Any]] = None  # Can be strings or dicts with 'original_url'
     social_media_urls: Optional[Dict[str, str]] = None
     product_descriptions: Optional[List[Dict[str, str]]] = None
-    
+
     created_at: datetime
     updated_at: datetime
 
@@ -309,10 +316,22 @@ class InsightResponse(BaseModel):
     proto_icps: Optional[List[Dict[str, Any]]]
     proto_icp_recommendations: Optional[List[Dict[str, Any]]]
     proto_icp_stats: Optional[Dict[str, Any]]
-    
+
+    # Creative Target Personas (CTP) — added after session 134 showed the
+    # frontend tabs were empty because these fields weren't in the response
+    # schema, so Pydantic was silently dropping them.
+    ctp_data: Optional[List[Dict[str, Any]]] = None
+    ctp_hypothesis: Optional[List[Dict[str, Any]]] = None
+    ctp_stats: Optional[Dict[str, Any]] = None
+
+    # Fase 3 generators
+    ugc_briefs: Optional[List[Dict[str, Any]]] = None
+    funnel_strategy: Optional[Dict[str, Any]] = None
+    post_purchase_survey: Optional[Dict[str, Any]] = None
+
     # Full report
     full_report: Optional[str]
-    
+
     created_at: datetime
 
     class Config:

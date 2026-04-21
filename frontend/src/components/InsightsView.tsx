@@ -298,19 +298,123 @@ export default function InsightsView({ insights }: { insights: Insight }) {
           </div>
         </div>
 
-        {/* Messaging Angles */}
+        {/* Messaging Angles (Enhanced with awareness_level, emotional_trigger, creative_priority) */}
         {insights.messaging_angles && insights.messaging_angles.length > 0 && (
           <div className="glass-card p-6">
             <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
               <TrendingUp className="w-5 h-5 text-indigo-400" />
-              Messaging Angles
+              Messaging Angles ({insights.messaging_angles.length})
             </h4>
             <div className="grid gap-4">
-              {insights.messaging_angles.map((angle, i) => (
+              {insights.messaging_angles.map((angle: any, i: number) => (
                 <div key={i} className="bg-indigo-500/10 rounded-xl p-4 border border-indigo-500/20">
-                  <h5 className="font-semibold text-indigo-300 mb-1">{angle.name}</h5>
+                  <div className="flex items-start justify-between mb-1">
+                    <h5 className="font-semibold text-indigo-300">{angle.name}</h5>
+                    <div className="flex gap-1.5 flex-shrink-0">
+                      {angle.creative_priority && (
+                        <span className={`tag text-xs ${angle.creative_priority === 'HIGH' ? 'bg-red-500/20 text-red-400' : angle.creative_priority === 'MEDIUM' ? 'bg-yellow-500/20 text-yellow-400' : 'bg-slate-700 text-slate-400'}`}>
+                          {angle.creative_priority}
+                        </span>
+                      )}
+                      {angle.awareness_level && (
+                        <span className="tag text-xs bg-blue-500/20 text-blue-400">{angle.awareness_level}</span>
+                      )}
+                    </div>
+                  </div>
                   <p className="text-white font-medium mb-2">"{angle.hook}"</p>
-                  <p className="text-sm text-slate-400">{angle.description}</p>
+                  <p className="text-sm text-slate-400 mb-2">{angle.description}</p>
+                  <div className="flex flex-wrap gap-2 text-xs">
+                    {angle.emotional_trigger && (
+                      <span className="text-pink-400">{angle.emotional_trigger}</span>
+                    )}
+                    {angle.best_fit_formats && angle.best_fit_formats.length > 0 && (
+                      angle.best_fit_formats.map((f: string, j: number) => (
+                        <span key={j} className="tag text-xs bg-slate-700 text-slate-300">{f}</span>
+                      ))
+                    )}
+                  </div>
+                  {angle.source_quote && (
+                    <blockquote className="text-xs text-slate-500 italic mt-2 border-l-2 border-indigo-500/30 pl-2">
+                      "{angle.source_quote}"
+                    </blockquote>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Failed Solution Angles */}
+        {(insights as any).failed_solution_angles && (insights as any).failed_solution_angles.length > 0 && (
+          <div className="glass-card p-6 border-l-4 border-orange-500">
+            <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <span className="text-orange-400">✗</span>
+              Failed Solution Angles ({(insights as any).failed_solution_angles.length})
+            </h4>
+            <p className="text-xs text-slate-500 mb-4">What customers tried before — the most powerful hooks for solution-aware audiences.</p>
+            <div className="grid gap-4">
+              {(insights as any).failed_solution_angles.map((angle: any, i: number) => (
+                <div key={i} className="bg-orange-500/10 rounded-xl p-4 border border-orange-500/20">
+                  <p className="text-sm text-orange-300 mb-1"><strong>Tried:</strong> {angle.solution_tried}</p>
+                  <p className="text-sm text-slate-400 mb-2"><strong>Failed because:</strong> {angle.why_it_failed}</p>
+                  {angle.verbatim && <blockquote className="text-xs text-slate-500 italic border-l-2 border-orange-500/30 pl-2 mb-2">"{angle.verbatim}"</blockquote>}
+                  {angle.hook && <p className="text-white font-medium bg-slate-900/50 p-2 rounded">Hook: "{angle.hook}"</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Transformation Angles */}
+        {(insights as any).transformation_angles && (insights as any).transformation_angles.length > 0 && (
+          <div className="glass-card p-6 border-l-4 border-emerald-500">
+            <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <span className="text-emerald-400">↗</span>
+              Transformation Angles ({(insights as any).transformation_angles.length})
+            </h4>
+            <p className="text-xs text-slate-500 mb-4">Before/after transformations in customers' own words.</p>
+            <div className="grid gap-4">
+              {(insights as any).transformation_angles.map((angle: any, i: number) => (
+                <div key={i} className="bg-emerald-500/10 rounded-xl p-4 border border-emerald-500/20">
+                  <div className="grid grid-cols-[1fr_auto_1fr] gap-3 items-center mb-3">
+                    <div className="bg-red-500/10 p-2 rounded text-center">
+                      <p className="text-xs text-red-400 mb-1">Before</p>
+                      <p className="text-sm text-slate-300">{angle.before_state}</p>
+                    </div>
+                    <span className="text-emerald-400 text-xl">→</span>
+                    <div className="bg-emerald-500/10 p-2 rounded text-center">
+                      <p className="text-xs text-emerald-400 mb-1">After</p>
+                      <p className="text-sm text-slate-300">{angle.after_state}</p>
+                    </div>
+                  </div>
+                  {angle.verbatim && <blockquote className="text-xs text-slate-500 italic border-l-2 border-emerald-500/30 pl-2 mb-2">"{angle.verbatim}"</blockquote>}
+                  {angle.hook && <p className="text-white font-medium bg-slate-900/50 p-2 rounded">Hook: "{angle.hook}"</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Weak Signals */}
+        {(insights as any).weak_signals && (insights as any).weak_signals.length > 0 && (
+          <div className="glass-card p-6 border-l-4 border-amber-500">
+            <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <span className="text-amber-400">⚡</span>
+              Weak Signals ({(insights as any).weak_signals.length})
+            </h4>
+            <p className="text-xs text-slate-500 mb-4">Low frequency, high creative potential — the angles nobody is running.</p>
+            <div className="grid gap-4">
+              {(insights as any).weak_signals.map((signal: any, i: number) => (
+                <div key={i} className="bg-amber-500/10 rounded-xl p-4 border border-amber-500/20">
+                  <blockquote className="text-sm text-white italic border-l-2 border-amber-500/30 pl-2 mb-2">"{signal.quote}"</blockquote>
+                  <p className="text-xs text-slate-400 mb-2">{signal.creative_potential}</p>
+                  {signal.hook_variations && signal.hook_variations.length > 0 && (
+                    <div className="space-y-1">
+                      {signal.hook_variations.map((hook: string, j: number) => (
+                        <p key={j} className="text-xs text-amber-300 bg-slate-900/50 p-1.5 rounded">"{hook}"</p>
+                      ))}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -388,6 +492,42 @@ export default function InsightsView({ insights }: { insights: Insight }) {
                 <p className="text-sm text-cyan-300">
                   <strong>Positioning Opportunity:</strong> {(insights.competitor_analysis as any).positioning_opportunity}
                 </p>
+              </div>
+            )}
+
+            {/* Messaging Gaps */}
+            {(insights.competitor_analysis as any)?.messaging_gaps && (insights.competitor_analysis as any).messaging_gaps.length > 0 && (
+              <div className="mt-4">
+                <h5 className="text-sm font-medium text-cyan-400 mb-2">Messaging Gaps Nobody Is Running</h5>
+                <div className="space-y-3">
+                  {(insights.competitor_analysis as any).messaging_gaps.map((gap: any, i: number) => (
+                    <div key={i} className="bg-slate-800/50 p-3 rounded-lg">
+                      <p className="text-sm text-white font-medium mb-1">{gap.gap}</p>
+                      <p className="text-xs text-slate-400 mb-1">{gap.why_it_exists}</p>
+                      {gap.example_hook && <p className="text-xs text-cyan-300 italic">Hook: "{gap.example_hook}"</p>}
+                      {gap.awareness_level && <span className="tag text-xs bg-blue-500/20 text-blue-400 mt-1 inline-block">{gap.awareness_level}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Differentiation Position */}
+            {(insights.competitor_analysis as any)?.differentiation_position && (
+              <div className="mt-4 p-4 bg-gradient-to-r from-cyan-500/10 to-indigo-500/10 rounded-lg border border-cyan-500/20">
+                <h5 className="text-sm font-bold text-cyan-400 mb-2">Differentiation Strategy</h5>
+                <p className="text-white font-medium mb-2">{(insights.competitor_analysis as any).differentiation_position.position_statement}</p>
+                <div className="grid md:grid-cols-2 gap-2 text-xs text-slate-400">
+                  {(insights.competitor_analysis as any).differentiation_position.awareness_level_to_target_first && (
+                    <p><span className="text-cyan-400">Target first:</span> {(insights.competitor_analysis as any).differentiation_position.awareness_level_to_target_first}</p>
+                  )}
+                  {(insights.competitor_analysis as any).differentiation_position.why_hard_to_replicate && (
+                    <p><span className="text-cyan-400">Moat:</span> {(insights.competitor_analysis as any).differentiation_position.why_hard_to_replicate}</p>
+                  )}
+                </div>
+                {(insights.competitor_analysis as any).differentiation_position.signal_hook && (
+                  <p className="text-sm text-white mt-2 bg-slate-900/50 p-2 rounded italic">"{(insights.competitor_analysis as any).differentiation_position.signal_hook}"</p>
+                )}
               </div>
             )}
           </div>

@@ -92,3 +92,12 @@ debug_*.png
 insights*.json
 *_log.txt
 ad_dump_*.txt
+
+# Research exports (per-brand data dumps from the dashboard)
+*-research-export.md
+*-ctp-personas.md
+*-hypothesis-layer.md
+*-raw-reviews.md
+
+# Windows system cruft
+Microsoft.Services.Store.winmd

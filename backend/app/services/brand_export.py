@@ -913,6 +913,257 @@ Real customer feedback with source attribution, sentiment, and intake classifica
 
         md += "\n"
 
+    # =======================================================
+    # New Fase 3 sections: Angle Bank advanced, Failed/Transformation/Weak,
+    # UGC Briefs, Funnel Strategy, Post-Purchase Survey.
+    # Each is gated by "if data present" so sessions without the new fields
+    # still export cleanly with no empty headers.
+    # =======================================================
+
+    def safe_get(ins_obj, attr, default):
+        """Read an attribute from the Insight ORM; tolerant of None/missing."""
+        if ins_obj is None:
+            return default
+        val = getattr(ins_obj, attr, None)
+        return val if val is not None else default
+
+    # Advanced Angle Bank (messaging_angles enriched with awareness_level / priority / trigger)
+    angles = safe_get(insight, 'messaging_angles', [])
+    advanced_angles = [a for a in angles if isinstance(a, dict) and (a.get('awareness_level') or a.get('emotional_trigger') or a.get('creative_priority'))]
+    if advanced_angles:
+        md += "\n## 22. Angle Bank (Enriched)\n\n"
+        md += "*Each angle is tagged with awareness level, emotional trigger, creative priority, and format fit.*\n\n"
+        for i, angle in enumerate(advanced_angles, 1):
+            name = angle.get('name', f'Angle {i}')
+            hook = angle.get('hook', '')
+            priority = angle.get('creative_priority', '')
+            level = angle.get('awareness_level', '')
+            trigger = angle.get('emotional_trigger', '')
+            formats = angle.get('best_fit_formats') or []
+            source_q = angle.get('source_quote', '')
+            desc = angle.get('description', '')
+            md += f"### {i}. {name}"
+            tags = [t for t in [priority, level, trigger] if t]
+            if tags:
+                md += " _(" + " · ".join(tags) + ")_"
+            md += "\n\n"
+            if hook:
+                md += f"> **Hook:** \"{hook}\"\n\n"
+            if desc:
+                md += f"{desc}\n\n"
+            if formats:
+                md += f"**Best formats:** {', '.join(formats)}\n\n"
+            if source_q:
+                md += f"**Source quote:** _\"{source_q}\"_\n\n"
+
+    # Failed Solution Angles
+    failed_solutions = safe_get(insight, 'failed_solution_angles', [])
+    if failed_solutions:
+        md += "\n## 23. Failed Solution Angles\n\n"
+        md += "*What customers tried before — the strongest hooks for solution-aware audiences.*\n\n"
+        for i, angle in enumerate(failed_solutions, 1):
+            if not isinstance(angle, dict):
+                continue
+            md += f"### {i}. {angle.get('solution_tried', 'Unknown solution')}\n\n"
+            if angle.get('why_it_failed'):
+                md += f"**Why it failed:** {angle['why_it_failed']}\n\n"
+            if angle.get('verbatim'):
+                md += f"> \"{angle['verbatim']}\"\n\n"
+            if angle.get('hook'):
+                md += f"**Hook:** \"{angle['hook']}\"\n\n"
+
+    # Transformation Angles
+    transforms = safe_get(insight, 'transformation_angles', [])
+    if transforms:
+        md += "\n## 24. Transformation Angles\n\n"
+        md += "*Before → After shifts described by real customers.*\n\n"
+        for i, angle in enumerate(transforms, 1):
+            if not isinstance(angle, dict):
+                continue
+            before = angle.get('before_state', '')
+            after = angle.get('after_state', '')
+            md += f"### {i}. {before} → {after}\n\n"
+            if angle.get('verbatim'):
+                md += f"> \"{angle['verbatim']}\"\n\n"
+            if angle.get('hook'):
+                md += f"**Hook:** \"{angle['hook']}\"\n\n"
+
+    # Weak Signals
+    weak_signals = safe_get(insight, 'weak_signals', [])
+    if weak_signals:
+        md += "\n## 25. Weak Signals (Low frequency, high creative potential)\n\n"
+        md += "*Rare quotes with unusual hook potential — angles nobody is running.*\n\n"
+        for i, signal in enumerate(weak_signals, 1):
+            if not isinstance(signal, dict):
+                continue
+            md += f"### Signal {i}\n\n"
+            if signal.get('quote'):
+                md += f"> \"{signal['quote']}\"\n\n"
+            if signal.get('creative_potential'):
+                md += f"**Why it matters:** {signal['creative_potential']}\n\n"
+            variations = signal.get('hook_variations') or []
+            if variations:
+                md += "**Hook variations:**\n"
+                for v in variations:
+                    md += f"- \"{v}\"\n"
+                md += "\n"
+
+    # UGC Creator Briefs
+    ugc_briefs = safe_get(insight, 'ugc_briefs', [])
+    if ugc_briefs:
+        md += "\n## 26. UGC Creator Briefs\n\n"
+        md += "*Ready-to-send briefs for external UGC creators. Non-negotiable hooks + talking points + production notes.*\n\n"
+        for i, brief in enumerate(ugc_briefs, 1):
+            if not isinstance(brief, dict):
+                continue
+            md += f"### {i}. {brief.get('brief_name', f'Brief {i}')}"
+            tags = [t for t in [brief.get('angle_type'), brief.get('awareness_level')] if t]
+            if tags:
+                md += " _(" + " · ".join(tags) + ")_"
+            md += "\n\n"
+            if brief.get('target_persona'):
+                md += f"**Target persona:** {brief['target_persona']}\n\n"
+            if brief.get('overview'):
+                md += f"{brief['overview']}\n\n"
+            hook_nn = brief.get('hook_non_negotiable') or {}
+            if hook_nn.get('exact_line'):
+                md += f"**Hook (non-negotiable):** \"{hook_nn['exact_line']}\"\n\n"
+                if hook_nn.get('visual_direction'):
+                    md += f"- Visual: {hook_nn['visual_direction']}\n"
+                if hook_nn.get('energy'):
+                    md += f"- Energy: {hook_nn['energy']}\n"
+                if hook_nn.get('what_not_to_do'):
+                    md += f"- Do NOT: {hook_nn['what_not_to_do']}\n"
+                md += "\n"
+            talking_points = brief.get('body_talking_points') or []
+            if talking_points:
+                md += "**Talking points:**\n"
+                for j, tp in enumerate(talking_points, 1):
+                    md += f"{j}. {tp}\n"
+                md += "\n"
+            if brief.get('emotional_journey'):
+                md += f"**Emotional arc:** {brief['emotional_journey']}\n\n"
+            close = brief.get('close') or {}
+            if close.get('how_it_ends') or close.get('cta_language'):
+                md += f"**Close:** {close.get('how_it_ends','')}"
+                if close.get('cta_language'):
+                    md += f" → \"{close['cta_language']}\""
+                md += "\n\n"
+
+    # Full Funnel Creative Strategy
+    funnel = safe_get(insight, 'funnel_strategy', None)
+    if isinstance(funnel, dict) and funnel and not funnel.get('_fallback'):
+        md += "\n## 27. Full Funnel Creative Strategy\n\n"
+        diagnosis = funnel.get('account_diagnosis') or {}
+        if diagnosis:
+            md += "### Account Diagnosis\n\n"
+            for k, v in diagnosis.items():
+                if isinstance(v, str) and v:
+                    md += f"- **{k.replace('_',' ').title()}:** {v}\n"
+                elif isinstance(v, list) and v:
+                    md += f"- **{k.replace('_',' ').title()}:** {', '.join(str(x) for x in v)}\n"
+            md += "\n"
+
+        personas = funnel.get('persona_architecture') or []
+        if personas:
+            md += "### Persona Architecture\n\n"
+            for p in personas:
+                if not isinstance(p, dict):
+                    continue
+                md += f"- **{p.get('persona_name','Persona')}** _({p.get('awareness_level','?')})_: {p.get('description','')}\n"
+                if p.get('hook_direction'):
+                    md += f"  - Hook direction: \"{p['hook_direction']}\"\n"
+            md += "\n"
+
+        funnel_map = funnel.get('funnel_map') or {}
+        if funnel_map:
+            md += "### Funnel Map\n\n"
+            for stage_key in ('top_of_funnel', 'middle_of_funnel', 'bottom_of_funnel'):
+                stage = funnel_map.get(stage_key)
+                if not isinstance(stage, dict):
+                    continue
+                md += f"**{stage_key.replace('_',' ').title()}**\n"
+                if stage.get('goal'):
+                    md += f"- Goal: {stage['goal']}\n"
+                if stage.get('recommended_formats'):
+                    md += f"- Formats: {', '.join(str(f) for f in stage['recommended_formats'])}\n"
+                if stage.get('example_hook'):
+                    md += f"- Example hook: \"{stage['example_hook']}\"\n"
+                if stage.get('budget_allocation'):
+                    md += f"- Budget: {stage['budget_allocation']}\n"
+                md += "\n"
+
+        roadmap = funnel.get('ninety_day_roadmap') or {}
+        if roadmap:
+            md += "### 90-Day Creative Roadmap\n\n"
+            for phase_key in ('phase_1_foundation', 'phase_2_validation', 'phase_3_compounding'):
+                phase = roadmap.get(phase_key)
+                if not isinstance(phase, dict):
+                    continue
+                md += f"**{phase_key.replace('_',' ').title()}** — {phase.get('weeks','')}\n"
+                for k, v in phase.items():
+                    if k == 'weeks':
+                        continue
+                    if isinstance(v, list) and v:
+                        md += f"- {k.replace('_',' ').title()}: {', '.join(str(x) for x in v)}\n"
+                    elif isinstance(v, str) and v:
+                        md += f"- {k.replace('_',' ').title()}: {v}\n"
+                md += "\n"
+
+        briefs = funnel.get('first_three_briefs') or []
+        if briefs:
+            md += "### First Three Priority Briefs\n\n"
+            for b in briefs:
+                if not isinstance(b, dict):
+                    continue
+                md += f"{b.get('priority','?')}. **{b.get('angle','')}** ({b.get('target_persona','')}, {b.get('awareness_level','')})\n"
+                if b.get('format'):
+                    md += f"   - Format: {b['format']}\n"
+                if b.get('hook_direction'):
+                    md += f"   - Hook: \"{b['hook_direction']}\"\n"
+                if b.get('why_first'):
+                    md += f"   - Why first: {b['why_first']}\n"
+            md += "\n"
+
+    # Post-Purchase Survey
+    survey = safe_get(insight, 'post_purchase_survey', None)
+    if isinstance(survey, dict) and survey and not survey.get('_fallback'):
+        md += "\n## 28. Post-Purchase Survey Questions\n\n"
+        md += "*Survey designed to produce copy, not satisfaction ratings.*\n\n"
+        best = survey.get('single_best_question') or {}
+        if best.get('question'):
+            md += f"### The Single Best Question\n\n> \"{best['question']}\"\n\n"
+            if best.get('why_its_the_best'):
+                md += f"{best['why_its_the_best']}\n\n"
+        core_five = survey.get('core_five') or []
+        if core_five:
+            md += "### Core Questions\n\n"
+            for i, q in enumerate(core_five, 1):
+                if not isinstance(q, dict):
+                    continue
+                md += f"{i}. **\"{q.get('question','')}\"**\n"
+                if q.get('creative_output_designed_for'):
+                    md += f"   - Designed to produce: {q['creative_output_designed_for']}\n"
+                if q.get('awareness_level_surfaced'):
+                    md += f"   - Surfaces: {q['awareness_level_surfaced']}\n"
+                if q.get('example_winning_response'):
+                    md += f"   - Example response: _\"{q['example_winning_response']}\"_\n"
+            md += "\n"
+        cat_q = survey.get('category_specific_questions') or []
+        if cat_q:
+            md += "### Category-Specific Questions\n\n"
+            for q in cat_q:
+                if isinstance(q, dict) and q.get('question'):
+                    md += f"- \"{q['question']}\"\n"
+            md += "\n"
+        notes = survey.get('survey_design_notes') or {}
+        if notes:
+            md += "### Survey Design Notes\n\n"
+            for k, v in notes.items():
+                if isinstance(v, str) and v:
+                    md += f"- **{k.replace('_',' ').title()}:** {v}\n"
+            md += "\n"
+
     md += f"""
 ---
 

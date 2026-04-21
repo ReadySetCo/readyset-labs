@@ -22,6 +22,89 @@ interface HooksLibraryViewProps {
   brandId?: number;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function textFromValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map(textFromValue).filter(Boolean).join(', ');
+  if (isRecord(value)) {
+    return Object.entries(value)
+      .map(([key, nestedValue]) => {
+        const text = textFromValue(nestedValue);
+        return text ? `${formatType(key)}: ${text}` : '';
+      })
+      .filter(Boolean)
+      .join(' | ');
+  }
+  return '';
+}
+
+function toStringArray(value: unknown, fallback: string[] = []): string[] {
+  if (Array.isArray(value)) return value.map(textFromValue).filter(Boolean);
+  const text = textFromValue(value);
+  return text ? [text] : fallback;
+}
+
+function normalizeStrength(value: unknown): number {
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return 3;
+  return Math.max(1, Math.min(5, Math.round(numeric)));
+}
+
+function normalizeHook(rawHook: unknown): Hook | null {
+  if (!isRecord(rawHook)) return null;
+
+  const hookText = textFromValue(rawHook.hook_text ?? rawHook.hook ?? rawHook.text ?? rawHook.headline);
+  if (!hookText) return null;
+
+  return {
+    hook_text: hookText,
+    hook_type: textFromValue(rawHook.hook_type ?? rawHook.type) || 'other',
+    target_emotion: textFromValue(rawHook.target_emotion ?? rawHook.emotion) || 'other',
+    target_persona: textFromValue(rawHook.target_persona ?? rawHook.persona) || undefined,
+    platform_fit: toStringArray(rawHook.platform_fit ?? rawHook.platforms, ['General']),
+    pain_point_addressed: textFromValue(rawHook.pain_point_addressed ?? rawHook.pain_point) || undefined,
+    verbatim_source: textFromValue(rawHook.verbatim_source ?? rawHook.source) || undefined,
+    strength_score: normalizeStrength(rawHook.strength_score ?? rawHook.score),
+    why_it_works: textFromValue(rawHook.why_it_works ?? rawHook.rationale) || undefined,
+  };
+}
+
+function collectHooks(library: HooksLibrary | null | undefined): Hook[] {
+  if (!library) return [];
+
+  const directHooks = Array.isArray((library as any).all_hooks) ? (library as any).all_hooks : [];
+  const bucketHooks = directHooks.length === 0 && isRecord((library as any).by_type)
+    ? Object.values((library as any).by_type).flatMap(value => Array.isArray(value) ? value : [])
+    : [];
+
+  return [...directHooks, ...bucketHooks]
+    .map(normalizeHook)
+    .filter((hook): hook is Hook => hook !== null);
+}
+
+function hasDistribution(data: unknown): data is Record<string, number> {
+  return isRecord(data) && Object.keys(data).length > 0;
+}
+
+function buildDistribution(hooks: Hook[], key: 'hook_type' | 'target_emotion'): Record<string, number> {
+  return hooks.reduce<Record<string, number>>((distribution, hook) => {
+    const bucket = textFromValue(hook[key]) || 'other';
+    distribution[bucket] = (distribution[bucket] || 0) + 1;
+    return distribution;
+  }, {});
+}
+
+function averageStrength(hooks: Hook[]): number {
+  if (hooks.length === 0) return 0;
+  const total = hooks.reduce((sum, hook) => sum + normalizeStrength(hook.strength_score), 0);
+  return Math.round((total / hooks.length) * 10) / 10;
+}
+
 export default function HooksLibraryView({ library, sessionId, brandId }: HooksLibraryViewProps) {
   const queryClient = useQueryClient();
   const [filter, setFilter] = useState({
@@ -33,6 +116,22 @@ export default function HooksLibraryView({ library, sessionId, brandId }: HooksL
   });
   const [copiedId, setCopiedId] = useState<number | null>(null);
   const [savedId, setSavedId] = useState<number | null>(null);
+  const allHooks = useMemo(() => collectHooks(library), [library]);
+  const typeDistribution = useMemo(
+    () => hasDistribution(library?.type_distribution) ? library.type_distribution : buildDistribution(allHooks, 'hook_type'),
+    [library, allHooks]
+  );
+  const emotionDistribution = useMemo(
+    () => hasDistribution(library?.emotion_distribution) ? library.emotion_distribution : buildDistribution(allHooks, 'target_emotion'),
+    [library, allHooks]
+  );
+  const totalHooks = typeof library?.total_hooks === 'number' && library.total_hooks > 0
+    ? library.total_hooks
+    : allHooks.length;
+  const avgStrength = typeof library?.avg_strength === 'number' && library.avg_strength > 0
+    ? library.avg_strength
+    : averageStrength(allHooks);
+  const recommendations = Array.isArray(library?.recommendations) ? library.recommendations : [];
 
   // Save hook mutation
   const saveMutation = useMutation({
@@ -63,7 +162,7 @@ export default function HooksLibraryView({ library, sessionId, brandId }: HooksL
 
   // Filter hooks
   const filteredHooks = useMemo(() => {
-    return library.all_hooks.filter(hook => {
+    return allHooks.filter(hook => {
       if (filter.type !== 'all' && hook.hook_type !== filter.type) return false;
       if (filter.emotion !== 'all' && hook.target_emotion !== filter.emotion) return false;
       if (filter.platform !== 'all' && !hook.platform_fit.some(p => p.toLowerCase().includes(filter.platform))) return false;
@@ -71,7 +170,7 @@ export default function HooksLibraryView({ library, sessionId, brandId }: HooksL
       if (filter.search && !hook.hook_text.toLowerCase().includes(filter.search.toLowerCase())) return false;
       return true;
     }).sort((a, b) => b.strength_score - a.strength_score);
-  }, [library.all_hooks, filter]);
+  }, [allHooks, filter]);
 
   const copyHook = async (hook: Hook, idx: number) => {
     await navigator.clipboard.writeText(hook.hook_text);
@@ -79,7 +178,7 @@ export default function HooksLibraryView({ library, sessionId, brandId }: HooksL
     setTimeout(() => setCopiedId(null), 2000);
   };
 
-  if (!library || library.total_hooks === 0) {
+  if (!library || totalHooks === 0 || allHooks.length === 0) {
     return (
       <div className="card p-8 text-center">
         <Megaphone className="w-12 h-12 text-slate-500 mx-auto mb-4" />
@@ -98,41 +197,41 @@ export default function HooksLibraryView({ library, sessionId, brandId }: HooksL
         <StatCard
           icon={<Megaphone className="w-5 h-5" />}
           label="Total Hooks"
-          value={library.total_hooks.toString()}
+          value={totalHooks.toString()}
           color="purple"
         />
         <StatCard
           icon={<Star className="w-5 h-5" />}
           label="Avg Strength"
-          value={`${library.avg_strength}/5`}
+          value={`${avgStrength}/5`}
           color="yellow"
         />
         <StatCard
           icon={<Target className="w-5 h-5" />}
           label="Hook Types"
-          value={Object.keys(library.type_distribution).length.toString()}
+          value={Object.keys(typeDistribution).length.toString()}
           color="blue"
         />
         <StatCard
           icon={<Heart className="w-5 h-5" />}
           label="Emotions"
-          value={Object.keys(library.emotion_distribution).length.toString()}
+          value={Object.keys(emotionDistribution).length.toString()}
           color="pink"
         />
       </div>
 
       {/* Recommendations */}
-      {library.recommendations && library.recommendations.length > 0 && (
+      {recommendations.length > 0 && (
         <div className="card p-6">
           <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
             <Lightbulb className="w-5 h-5 text-yellow-400" />
             Quick Recommendations
           </h3>
           <div className="grid md:grid-cols-2 gap-3">
-            {library.recommendations.slice(0, 4).map((rec, idx) => (
+            {recommendations.slice(0, 4).map((rec: any, idx) => (
               <div key={idx} className="bg-slate-800/50 rounded-lg p-3 border-l-4 border-yellow-500">
-                <span className="tag-primary text-xs mb-1">{rec.type}</span>
-                <p className="text-white text-sm">{rec.action}</p>
+                <span className="tag-primary text-xs mb-1">{textFromValue(rec.type) || 'Recommendation'}</span>
+                <p className="text-white text-sm">{textFromValue(rec.action)}</p>
               </div>
             ))}
           </div>
@@ -167,7 +266,7 @@ export default function HooksLibraryView({ library, sessionId, brandId }: HooksL
             onChange={(v) => setFilter({ ...filter, type: v })}
             options={[
               { value: 'all', label: 'All Types' },
-              ...Object.keys(library.type_distribution).map(t => ({ value: t, label: formatType(t) }))
+              ...Object.keys(typeDistribution).map(t => ({ value: t, label: formatType(t) }))
             ]}
           />
 
@@ -178,7 +277,7 @@ export default function HooksLibraryView({ library, sessionId, brandId }: HooksL
             onChange={(v) => setFilter({ ...filter, emotion: v })}
             options={[
               { value: 'all', label: 'All Emotions' },
-              ...Object.keys(library.emotion_distribution).map(e => ({ value: e, label: formatType(e) }))
+              ...Object.keys(emotionDistribution).map(e => ({ value: e, label: formatType(e) }))
             ]}
           />
 
@@ -235,12 +334,12 @@ export default function HooksLibraryView({ library, sessionId, brandId }: HooksL
       <div className="grid md:grid-cols-2 gap-6">
         <DistributionCard
           title="By Hook Type"
-          data={library.type_distribution}
+          data={typeDistribution}
           colorClass="bg-purple-500"
         />
         <DistributionCard
           title="By Emotion"
-          data={library.emotion_distribution}
+          data={emotionDistribution}
           colorClass="bg-pink-500"
         />
       </div>
@@ -347,11 +446,21 @@ function HookCard({
             <span className="px-2 py-1 rounded text-xs font-medium bg-slate-700 text-slate-300">
               {formatType(hook.target_emotion)}
             </span>
-            {hook.platform_fit.map(p => (
+            {toStringArray(hook.platform_fit, ['General']).map(p => (
               <span key={p} className="px-2 py-1 rounded text-xs bg-slate-800 text-slate-400">
                 {p}
               </span>
             ))}
+            {(hook as any).awareness_level && (
+              <span className="px-2 py-1 rounded text-xs font-medium bg-blue-500/20 text-blue-400">
+                {(hook as any).awareness_level}
+              </span>
+            )}
+            {(hook as any).recommended_format && (
+              <span className="px-2 py-1 rounded text-xs font-medium bg-purple-500/20 text-purple-400">
+                {(hook as any).recommended_format}
+              </span>
+            )}
           </div>
 
           {hook.target_persona && (
@@ -404,8 +513,19 @@ function DistributionCard({
   data: Record<string, number>;
   colorClass: string;
 }) {
-  const total = Object.values(data).reduce((a, b) => a + b, 0);
-  const sorted = Object.entries(data).sort((a, b) => b[1] - a[1]);
+  const sorted = Object.entries(data || {})
+    .filter(([, count]) => count > 0)
+    .sort((a, b) => b[1] - a[1]);
+  const total = sorted.reduce((sum, [, count]) => sum + count, 0);
+
+  if (total === 0) {
+    return (
+      <div className="card p-4">
+        <h4 className="text-sm font-medium text-slate-400 mb-4">{title}</h4>
+        <p className="text-sm text-slate-500">No distribution data available.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="card p-4">
@@ -432,8 +552,9 @@ function DistributionCard({
 
 // Helpers
 
-function formatType(type: string): string {
-  return type
+function formatType(type: unknown): string {
+  const text = textFromValue(type) || 'other';
+  return text
     .split('_')
     .map(word => word.charAt(0).toUpperCase() + word.slice(1))
     .join(' ');

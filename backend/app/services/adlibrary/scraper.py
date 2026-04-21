@@ -6,7 +6,6 @@ Adapted from existing scraper project.
 import os
 import re
 import json
-import asyncio
 import subprocess
 from datetime import datetime
 from pathlib import Path
@@ -86,6 +85,37 @@ def extract_fb_handle(url_or_handle: Optional[str]) -> Optional[str]:
         return None
 
     return text
+
+
+def normalize_fb_page_url(url: Optional[str]) -> Optional[str]:
+    """
+    Collapse any Facebook URL to the page root URL.
+
+    Facebook Ad Library / Apify scrapers need the **page URL**, not a deep
+    link. Brand DNA extractors sometimes return URLs like
+    `facebook.com/IlMakiage/videos/abc/123/` or `facebook.com/Brand/posts/...`
+    — these return 0 ads from the Apify actor. Normalize them all to
+    `https://www.facebook.com/<handle>`.
+
+    Special case: `facebook.com/p/Brand-Name-PAGEID/` URLs are preserved
+    because the scraper extracts page_id from them (regex `/p/[^/]*-(\\d{10,})`).
+
+    Returns None if the URL contains no extractable handle (e.g.
+    `facebook.com/watch`, `facebook.com/groups/...`).
+    """
+    if not url:
+        return None
+
+    # Preserve /p/Name-PAGEID/ URLs — scrape_competitor_ads extracts the
+    # page_id from them directly via regex. Truncate anything after the /p/<slug>.
+    p_match = re.search(r'(https?://(?:www\.)?facebook\.com/p/[^/?#\s]+)', url, re.IGNORECASE)
+    if p_match:
+        return p_match.group(1).rstrip('/')
+
+    handle = extract_fb_handle(url)
+    if not handle:
+        return None
+    return f"https://www.facebook.com/{handle}"
 
 
 class AdLibraryScraper:
@@ -1297,58 +1327,34 @@ class AdLibraryScraper:
         limit: int = 20
     ) -> Dict[str, Any]:
         """
-        Scrape ads for a competitor.
-        Strategy: FB URL → discovered FB URL → page name search.
+        Scrape ads for any brand (main brand or competitor).
+
+        Chain of strategies (stop at first that yields real ads):
+          1. Facebook page URL (gives fullest metadata: videos + media URLs)
+          2. Ad Library keyword_exact_phrase (precise filter, sometimes image-only)
+          3. Ad Library page search (loose match; last resort)
+
+        Earlier single-strategy versions either short-circuited on Apify error
+        records or returned image-only metadata for competitors.
         """
         from .apify_facebook import get_apify_facebook_service
         apify = get_apify_facebook_service()
-        print(f"    -> Scraping competitor: {competitor_name}...")
+        from urllib.parse import quote
+        print(f"    -> Scraping: {competitor_name}...")
 
-        # STEP 0: Discover Facebook URL if not provided
+        # Normalize incoming FB URL if provided
+        facebook_url = normalize_fb_page_url(facebook_url) if facebook_url else None
+
+        # STEP 0: Discover FB URL if not provided (keep the existing discovery)
         discovered_fb_url = facebook_url
-        if not discovered_fb_url:
-            # Try website first
-            website_url = competitor_url
-            if not website_url:
-                try:
-                    async with httpx.AsyncClient(timeout=10.0) as client:
-                        resp = await client.get(
-                            "https://html.duckduckgo.com/html/",
-                            params={"q": f"{competitor_name} official website"},
-                            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"}
-                        )
-                        excluded = ['duckduckgo', 'google', 'facebook', 'instagram', 'twitter', 'linkedin', 'youtube', 'tiktok', 'wikipedia']
-                        for url in re.findall(r'href="(https?://[^"]+)"', resp.text):
-                            if not any(d in url.lower() for d in excluded):
-                                website_url = url
-                                break
-                except Exception:
-                    pass
-
-            if website_url:
-                social = await self._extract_social_from_website(website_url)
-                if social.get("facebook"):
-                    discovered_fb_url = social["facebook"]
+        if not discovered_fb_url and competitor_url:
+            social = await self._extract_social_from_website(competitor_url)
+            if social.get("facebook"):
+                discovered_fb_url = normalize_fb_page_url(social["facebook"])
+                if discovered_fb_url:
                     print(f"       [Website] Found FB: {discovered_fb_url[:60]}")
 
-            if not discovered_fb_url:
-                try:
-                    async with httpx.AsyncClient(timeout=10.0) as client:
-                        resp = await client.get(
-                            "https://html.duckduckgo.com/html/",
-                            params={"q": f"{competitor_name} facebook page site:facebook.com"},
-                            headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0"}
-                        )
-                        slugs = re.findall(r'https?://(?:www\.)?facebook\.com/([a-zA-Z0-9._-]+)', resp.text)
-                        slugs = [s for s in slugs if s.lower() not in ('ads', 'watch', 'groups', 'events', 'marketplace', 'gaming', 'login', 'help', 'pages')]
-                        if slugs:
-                            discovered_fb_url = f"https://www.facebook.com/{slugs[0]}"
-                            print(f"       [DuckDuckGo] Found FB: {discovered_fb_url}")
-                except Exception:
-                    pass
-
-        # STRATEGY 1: Facebook URL (100% precision)
-        # Handle /p/Name-PAGEID/ format by extracting page_id directly
+        # STRATEGY 1: Facebook page URL (most complete metadata)
         if discovered_fb_url:
             p_match = re.search(r'facebook\.com/p/[^/]*?-(\d{10,})', discovered_fb_url)
             if p_match:
@@ -1356,27 +1362,48 @@ class AdLibraryScraper:
                 print(f"       Strategy 1: Extracted page_id from /p/ URL: {extracted_pid}")
                 raw_ads = await apify.scrape_by_page_id(extracted_pid, limit=limit)
             else:
-                print(f"       Strategy 1: FB URL → {discovered_fb_url[:60]}")
+                print(f"       Strategy 1: FB URL -> {discovered_fb_url[:60]}")
                 raw_ads = await apify.scrape_by_facebook_url(discovered_fb_url, limit=limit)
             if raw_ads:
-                raw_ads = apify.filter_by_page_name(raw_ads, competitor_name)
-                if raw_ads:
-                    result = await self.process_raw_apify_ads(raw_ads, competitor_name, limit)
+                filtered = apify.filter_by_page_name(raw_ads, competitor_name)
+                if filtered:
+                    result = await self.process_raw_apify_ads(filtered, competitor_name, limit)
+                    # Only return if we got REAL ads with ad_archive_id — otherwise
+                    # the strategy effectively failed and we fall through.
+                    if result and result.get("ads"):
+                        result["competitor_name"] = competitor_name
+                        return result
+                    print(f"       Strategy 1: filtered records were all Apify garbage — falling through")
+
+        # STRATEGY 2: keyword_exact_phrase search (precise brand match)
+        print(f"       Strategy 2: keyword_exact_phrase '{competitor_name}'")
+        exact_url = (
+            f"https://www.facebook.com/ads/library/"
+            f"?active_status=active&ad_type=all&country=ALL"
+            f"&q={quote(competitor_name)}&search_type=keyword_exact_phrase&media_type=all"
+        )
+        raw_ads = await apify._run_actor(exact_url, limit)
+        if raw_ads:
+            filtered = apify.filter_by_page_name(raw_ads, competitor_name)
+            if filtered:
+                result = await self.process_raw_apify_ads(filtered, competitor_name, limit)
+                if result and result.get("ads"):
                     result["competitor_name"] = competitor_name
                     return result
 
-        # STRATEGY 2: Page name search (fallback)
-        print(f"       Strategy 2: Page name search '{competitor_name}'")
+        # STRATEGY 3: Page name search (loose; may include similar pages)
+        print(f"       Strategy 3: page name search '{competitor_name}'")
         raw_ads = await apify.scrape_by_page_name(competitor_name, limit=limit)
         if raw_ads:
-            raw_ads = apify.filter_by_page_name(raw_ads, competitor_name)
-            if raw_ads:
-                result = await self.process_raw_apify_ads(raw_ads, competitor_name, limit)
-                result["competitor_name"] = competitor_name
-                return result
+            filtered = apify.filter_by_page_name(raw_ads, competitor_name)
+            if filtered:
+                result = await self.process_raw_apify_ads(filtered, competitor_name, limit)
+                if result and result.get("ads"):
+                    result["competitor_name"] = competitor_name
+                    return result
 
         print(f"    [!] Could not find ads for {competitor_name}")
-        return {"competitor_name": competitor_name, "ads": [], "error": "Could not find Facebook page or ads"}
+        return {"competitor_name": competitor_name, "ads": [], "error": "No ads found"}
 
     async def process_raw_apify_ads(
         self,
@@ -1402,6 +1429,19 @@ class AdLibraryScraper:
         brand_slug = re.sub(r'[^a-z0-9]+', '_', brand_name.lower()).strip('_')
         brand_dir = self._setup_directories(brand_slug)
 
+        # Drop Apify garbage records (no ad_archive_id = no real ad).
+        # Apify occasionally returns placeholder records for pages with no active ads,
+        # which used to become stub "unknown_1" ads that polluted downstream pipelines
+        # (e.g. Il Makiage session 129 got 1 stub instead of real ads).
+        valid_raw_ads = [
+            r for r in raw_ads
+            if r.get("ad_archive_id") or r.get("adArchiveID")
+        ]
+        dropped = len(raw_ads) - len(valid_raw_ads)
+        if dropped:
+            print(f"    [Process] Dropped {dropped} Apify records without ad_archive_id (garbage)")
+        raw_ads = valid_raw_ads
+
         # Apply diversity filter
         raw_ads = self._filter_diverse_ads(raw_ads, limit)
 
@@ -1412,8 +1452,8 @@ class AdLibraryScraper:
         for i, raw_ad in enumerate(raw_ads[:limit], 1):
             snapshot = raw_ad.get("snapshot") or {}
 
-            # ID
-            ad_id = str(raw_ad.get("ad_archive_id") or raw_ad.get("adArchiveID") or f"unknown_{i}")
+            # ID — ad_archive_id is guaranteed by the filter above
+            ad_id = str(raw_ad.get("ad_archive_id") or raw_ad.get("adArchiveID"))
 
             # Format detection
             display_format = snapshot.get("displayFormat") or raw_ad.get("display_format") or ""
@@ -1611,19 +1651,30 @@ class AdLibraryScraper:
                             print(f"       [!!! FILTER] No page_name matched '{brand_name}' / '{ig_handle}' -- returning empty to avoid wrong-brand ads")
                             raw_ads = []
             
+            # Drop Apify garbage records (no ad_archive_id = no real ad)
+            valid_raw_ads = [
+                r for r in raw_ads
+                if r.get("ad_archive_id") or r.get("adArchiveID")
+            ]
+            dropped_here = len(raw_ads) - len(valid_raw_ads)
+            if dropped_here:
+                print(f"       [Process] Dropped {dropped_here} records without ad_archive_id (garbage)")
+            raw_ads = valid_raw_ads
+
             # Apply diversity filter: prioritize long-running ads, deduplicate variations
             raw_ads = self._filter_diverse_ads(raw_ads, limit)
-            
+
             # Process ads and download media
             ads = []
             total_ads = len(raw_ads)
-            
+
             for i, raw_ad in enumerate(raw_ads[:limit], 1):
                 # Handle both old (curious_coder) and new (agenscrape) actor structures
                 # agenscrape uses: ad_archive_id, display_format, videos[], images[], ad_body
                 # curious_coder used: adArchiveID, snapshot.displayFormat, snapshot.videos, snapshot.body
-                
-                ad_id = raw_ad.get("ad_archive_id") or raw_ad.get("adArchiveID", f"unknown_{i}")
+
+                # ad_archive_id guaranteed by filter above
+                ad_id = raw_ad.get("ad_archive_id") or raw_ad.get("adArchiveID")
                 display_format = raw_ad.get("display_format") or raw_ad.get("snapshot", {}).get("displayFormat", "UNKNOWN")
                 
                 # More robust video detection

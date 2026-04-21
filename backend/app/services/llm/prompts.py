@@ -288,7 +288,8 @@ Generate a DEEP analysis with the following JSON structure. Be specific and use 
     "customer_desires": ["What customers are actively looking for - be specific"],
     "trending_topics": ["Current trending discussions in this space"],
     
-    "icps": [  // GENERATE 5-10 DISTINCT ICPs based on data patterns
+    "icps": [  // MANDATORY: Generate AT LEAST 8 distinct ICPs. Target 8-12.
+               // Do NOT stop at the minimum. If the data supports more segments, include them.
         {{
             "name": "PERSONA_NAME (descriptive)",
             "description": "Detailed description based on data patterns",
@@ -297,20 +298,51 @@ Generate a DEEP analysis with the following JSON structure. Be specific and use 
             "pain_points": ["This persona's specific pain points"],
             "motivations": ["What drives this persona to seek solutions"]
         }}
-        // Include 5-10 distinct personas, each representing a data-supported customer segment
+        // Each persona must represent a distinct segment identified from real data.
+        // More segmentation = richer creative targeting. Aim for 8-12 unique ICPs.
     ],
     
     "pain_points": ["Specific pain points for ad messaging - prioritized by frequency"],
     "value_props": ["Value propositions that resonate based on positive feedback"],
     
-    "messaging_angles": [  // GENERATE 10-20 MESSAGING ANGLES from data
+    "messaging_angles": [  // MANDATORY: Generate AT LEAST 12 messaging angles. Target 12-20.
+                           // Do NOT return fewer than 12. Mine the data for every distinct
+                           // angle — each one is a potential creative direction.
         {{
             "name": "ANGLE_NAME",
             "hook": "The actual hook/headline to use",
             "description": "Why this angle works based on data",
-            "supporting_evidence": "Quote or data point that supports this"
+            "supporting_evidence": "Quote or data point that supports this",
+            "awareness_level": "Unaware | Problem Aware | Solution Aware | Product Aware | Most Aware",
+            "emotional_trigger": "The primary emotion activated: frustration / guilt / relief / embarrassment / pride / aspiration / fear / curiosity",
+            "best_fit_formats": ["UGC", "Static", "Testimonial", "Founder Ad"],
+            "creative_priority": "HIGH / MEDIUM / LOW — based on specificity, emotional charge, and differentiation from competitors",
+            "source_quote": "The exact verbatim customer quote this angle was derived from (if available)"
         }}
-        // Include 10-20 distinct angles, each with real data support
+        // Requirements:
+        //  - Minimum 12 angles, target 15-20. Do NOT cap at the minimum.
+        //  - Each angle must be structurally distinct (different emotional driver, different proof, different framing).
+        //  - Distribute across all 5 awareness levels — do NOT cluster at Product Aware.
+        //  - At least 2 angles per awareness level when the data supports it.
+    ],
+
+    "failed_solution_angles": [  // CRITICAL: What customers tried before that FAILED
+        {{
+            "solution_tried": "What they tried (specific product, method, or approach)",
+            "why_it_failed": "Why it failed — in the customer's own words",
+            "verbatim": "Exact customer quote describing the failure",
+            "hook": "A hook that opens with this failed solution"
+        }}
+        // These are the most powerful hooks for Solution Aware audiences
+    ],
+
+    "transformation_angles": [  // Before/After transformations described by customers
+        {{
+            "before_state": "What they had/felt before — specific, emotional",
+            "after_state": "What changed after — specific, emotional",
+            "verbatim": "Exact customer language describing the shift",
+            "hook": "A hook that leads with the after state, not the product"
+        }}
     ],
     
     "tone_emotions": ["Emotional journey: e.g., 'Frustration -> Hope'"],
@@ -361,7 +393,19 @@ Generate a DEEP analysis with the following JSON structure. Be specific and use 
     }},
     
     "feature_requests": ["Features or improvements people are asking for"],
-    
+
+    "weak_signals": [  // Pain points or desires mentioned only 1-2 times but with HIGH hook potential
+        {{
+            "quote": "Exact verbatim quote from the data",
+            "frequency": "How many times this appeared (1-2)",
+            "creative_potential": "Why this has hook potential despite low frequency — what makes it unique, emotionally charged, or different from what competitors say",
+            "hook_variations": ["Hook 1 built from this signal", "Hook 2 variation"]
+        }}
+        // A weak signal mentioned once might be the angle nobody is running. Flag every outlier.
+    ],
+
+    "community_dialect": ["Slang, shorthand, insider phrases, or recurring references from the scraped data — the words customers use with each other, not marketing language"],
+
     "full_report": "A comprehensive markdown report summarizing all findings"
 }}
 
@@ -398,7 +442,7 @@ Return a JSON object:
 
 # ============ Competitor Analysis Prompt ============
 
-COMPETITOR_ANALYSIS_SYSTEM = """You are a competitive intelligence analyst. Your task is to analyze competitor information and provide strategic insights."""
+COMPETITOR_ANALYSIS_SYSTEM = """You are a competitive creative intelligence analyst. Your job is to study what competitors are saying — and more importantly, what they are NOT saying. The gap between what the market wants and what category advertising is currently offering is where the best-performing creative lives. Your analysis identifies that gap with enough precision that a creative team can brief directly from it."""
 
 COMPETITOR_ANALYSIS_PROMPT = """Analyze the following competitor data for {brand_name}.
 
@@ -417,10 +461,38 @@ Return a JSON analysis:
             "strengths": ["Their key strengths"],
             "weaknesses": ["Their weaknesses based on reviews/mentions"],
             "price_point": "premium/mid/budget/unknown",
-            "key_messaging": ["Their main marketing messages"]
+            "key_messaging": ["Their main marketing messages"],
+            "awareness_level": "Unaware/Problem Aware/Solution Aware/Product Aware/Most Aware — which level their ads primarily target",
+            "hook_types_used": ["The hook types they rely on most"],
+            "creative_maturity": "fresh/established/fatigued — how long they've been running the same angles"
         }}
     ],
     "competitive_landscape": "Overview of the competitive environment",
+
+    "category_saturation_patterns": {{
+        "angles_everyone_shares": ["Messaging angles that EVERY competitor uses — these are invisible through repetition"],
+        "awareness_level_clustering": "Which awareness level is the entire category clustering at (e.g., 'Product Aware' if everyone leads with features/offers)",
+        "messaging_invisible_through_repetition": ["Specific phrases or claims that have become category wallpaper — consumers no longer notice them"],
+        "customer_desires_consistently_unaddressed": ["What the market wants that NO competitor is talking about — identified from customer data vs. competitor messaging"]
+    }},
+
+    "messaging_gaps": [
+        {{
+            "gap": "What the gap is — a specific unoccupied messaging position",
+            "why_it_exists": "Why no competitor is running this angle",
+            "brief_direction": "The brief direction this gap points to",
+            "example_hook": "One example hook that would own this gap",
+            "awareness_level": "Which awareness level this gap serves"
+        }}
+    ],
+
+    "differentiation_position": {{
+        "position_statement": "The single most defensible creative position for {brand_name} — in one sentence",
+        "awareness_level_to_target_first": "Which awareness level to own first",
+        "signal_hook": "The hook that would signal this position immediately",
+        "why_hard_to_replicate": "Why this position is difficult for competitors to copy quickly"
+    }},
+
     "differentiation_opportunities": ["Ways to differentiate from competitors"],
     "messaging_to_avoid": ["Messages competitors own that we should avoid"],
     "attack_angles": ["Potential angles to position against competitors"]

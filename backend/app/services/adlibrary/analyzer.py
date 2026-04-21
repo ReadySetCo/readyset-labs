@@ -161,8 +161,21 @@ structured data into a JSON object.
 ## STRATEGIC ANALYSIS (longer text - be detailed)
 - "angle_label": 8-10 word human-readable description of the ad's angle/approach
   Example: "Anxious Professional | Problem-Solution | Easy Online Prescription"
+- "awareness_level": One of "Unaware", "Problem Aware", "Solution Aware", "Product Aware", "Most Aware"
+  * Unaware: ad educates about a problem the viewer doesn't know they have
+  * Problem Aware: ad names a known pain and agitates it — no product yet
+  * Solution Aware: ad positions product as the answer to a known need
+  * Product Aware: ad differentiates from competitors or handles objections
+  * Most Aware: ad leads with offer, urgency, or social proof for ready buyers
+- "primary_psychological_trigger": The dominant cognitive bias the ad leverages (e.g., "Loss Aversion", "Social Signaling", "Zeigarnik Effect", "Zero-Risk Bias", "Authority Bias", "Scarcity/FOMO", "Anchoring", "Reciprocity")
 - "high_fidelity_description": Detailed description of entire ad - what happens start to finish
 - "strategic_summary": Why this ad works, what makes it effective, key takeaways (3-5 sentences)
+- "transferable_principles": Array of 3-5 principles. Each follows the format: "This works because [mechanism]. Future briefs should [specific action]." These convert ad analysis into brief directions.
+- "iteration_suggestions": {{
+    "alternative_hooks": ["3 hooks for the same angle but different opening moves"],
+    "format_variations": ["Same angle in different formats (UGC, static, founder ad, etc.)"],
+    "fatigue_signals": ["Metrics that indicate this ad is dying: rising frequency, dropping CTR, etc."]
+  }}
 - "key_claims": Main claims or promises made
 - "target_audience_inferred": Who this ad seems to target
 - "effectiveness_score_1to5": Overall effectiveness rating

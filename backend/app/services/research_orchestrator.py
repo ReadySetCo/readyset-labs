@@ -20,10 +20,10 @@ from .scrapers.apify import ApifyScraper
 from .scrapers.social_free import SocialFreeScraper
 from .insights import InsightsGeneratorService
 from .adlibrary import AdLibraryScraper, AdAnalyzer
-from .adlibrary.scraper import extract_ig_handle, extract_fb_handle
+from .adlibrary.scraper import extract_ig_handle, extract_fb_handle  # noqa: F401 (kept for API/compat)
 from .landing_pages import LandingPageAnalyzer
 from .competitors import CompetitorAnalyzer
-from .generators import ScriptGenerator, ThumbnailSuggester, ABTestSuggester
+from .generators import ScriptGenerator, ThumbnailSuggester, ABTestSuggester, UGCBriefGenerator, FunnelStrategyGenerator, SurveyGenerator
 from .social_media_analyzer import SocialMediaAnalyzer
 from .youtube_analyzer import YouTubeAnalyzer
 from .twitter_analyzer import TwitterAnalyzer
@@ -112,6 +112,9 @@ class ResearchOrchestrator:
         self.script_generator = ScriptGenerator()
         self.thumbnail_suggester = ThumbnailSuggester()
         self.ab_test_suggester = ABTestSuggester()
+        self.ugc_brief_generator = UGCBriefGenerator()
+        self.funnel_strategy_generator = FunnelStrategyGenerator()
+        self.survey_generator = SurveyGenerator()
         self.social_analyzer = SocialMediaAnalyzer()
         self.youtube_analyzer = YouTubeAnalyzer()
         self.twitter_analyzer = TwitterAnalyzer()
@@ -512,6 +515,10 @@ class ResearchOrchestrator:
             if brand.social_media_urls:
                 facebook_url = brand.social_media_urls.get("facebook")
                 instagram_url = brand.social_media_urls.get("instagram")
+            # Manual Ad Library URL override (user-provided, bypasses auto-discovery)
+            manual_ad_library_url = getattr(brand, "ad_library_url", None)
+            if manual_ad_library_url:
+                self._log(f"[Ad Library] Using MANUAL override URL from brand form: {manual_ad_library_url}")
             ad_library_task = asyncio.create_task(
                 self._run_ad_library_analysis(
                     brand.name,  # ALWAYS use real brand name for keyword search (NOT validated_brand_name which may be garbage like "Ad Library - Facebook")
@@ -519,7 +526,8 @@ class ResearchOrchestrator:
                     initial_competitors,
                     facebook_url=facebook_url,
                     instagram_url=instagram_url,
-                    ad_library_page_id=validated_page_id  # Use validated page_id for post-filtering
+                    ad_library_page_id=validated_page_id,  # Use validated page_id for post-filtering
+                    override_ad_library_url=manual_ad_library_url,
                 )
             )
             
@@ -877,19 +885,21 @@ class ResearchOrchestrator:
                         ad_library_data=ad_library_results.get("brand_ads") if ad_library_results else None,
                         ad_creative_patterns=ad_library_results.get("patterns") if ad_library_results else None
                     ),
-                    timeout=600.0  # 10 min max for CTP generation
+                    timeout=3600.0  # 60 min — stance classification needs ~20s/batch × 93 batches
                 )
                 insights["ctp_data"] = ctp_result.get("ctps", [])
                 insights["ctp_hypothesis"] = ctp_result.get("hypothesis", [])
                 insights["ctp_stats"] = ctp_result.get("stats", {})
                 print(f"    [+] {len(ctp_result.get('ctps', []))} Creative Target Personas generated")
             except asyncio.TimeoutError:
-                print("    [!] CTP generation timeout, skipping")
+                print("    [!] CTP generation timeout (exceeded 60 min), skipping")
                 insights["ctp_data"] = []
                 insights["ctp_hypothesis"] = []
                 insights["ctp_stats"] = {}
             except Exception as e:
-                print(f"    [!] CTP generation error: {str(e)[:80]}")
+                import traceback
+                print(f"    [!] CTP generation error: {type(e).__name__}: {str(e)[:200]}")
+                traceback.print_exc()
                 insights["ctp_data"] = []
                 insights["ctp_hypothesis"] = []
                 insights["ctp_stats"] = {}
@@ -1148,14 +1158,16 @@ class ResearchOrchestrator:
                     print(f"       [!] A/B tests error: {e}")
                     return []
             
-            # Run all 3 generators in parallel with global timeout
+            # Run all 3 generators in parallel with global timeout.
+            # Raised from 180s to 600s after session 134 hit the timeout and
+            # produced 0/0/0 for scripts/thumbnails/ab_tests.
             try:
                 results = await asyncio.wait_for(
                     asyncio.gather(
                         gen_scripts(), gen_thumbnails(), gen_ab_tests(),
                         return_exceptions=True
                     ),
-                    timeout=180.0  # 3 minute max for all generators combined
+                    timeout=600.0  # 10 minute max for all generators combined
                 )
                 
                 # Handle results - could be values or exceptions
@@ -1198,11 +1210,67 @@ class ResearchOrchestrator:
                 print(f"       [!] Hooks Library error: {str(e)[:80]}")
                 insights["hooks_library"] = {"status": "error", "error": str(e)[:100]}
             
+            # Generate UGC Creator Briefs, Funnel Strategy, and Post-Purchase Survey in parallel
+            async def gen_ugc_briefs():
+                try:
+                    return await self.ugc_brief_generator.generate_briefs(
+                        brand_info=brand_info, ad_patterns=ad_patterns, insights=insights, num_briefs=3
+                    )
+                except Exception as e:
+                    print(f"       [!] UGC Briefs error: {str(e)[:80]}")
+                    return []
+
+            async def gen_funnel_strategy():
+                try:
+                    return await self.funnel_strategy_generator.generate_strategy(
+                        brand_info=brand_info, ad_patterns=ad_patterns, insights=insights,
+                        competitor_data=competitor_results
+                    )
+                except Exception as e:
+                    print(f"       [!] Funnel Strategy error: {str(e)[:80]}")
+                    return {}
+
+            async def gen_survey():
+                try:
+                    return await self.survey_generator.generate_survey(
+                        brand_info=brand_info, insights=insights
+                    )
+                except Exception as e:
+                    print(f"       [!] Survey error: {str(e)[:80]}")
+                    return {}
+
+            try:
+                new_gen_results = await asyncio.wait_for(
+                    asyncio.gather(
+                        gen_ugc_briefs(), gen_funnel_strategy(), gen_survey(),
+                        return_exceptions=True
+                    ),
+                    timeout=300.0  # 5 minute max for all new generators
+                )
+
+                ugc_briefs = new_gen_results[0] if isinstance(new_gen_results[0], list) else []
+                funnel_strategy = new_gen_results[1] if isinstance(new_gen_results[1], dict) else {}
+                survey = new_gen_results[2] if isinstance(new_gen_results[2], dict) else {}
+
+                for i, r in enumerate(new_gen_results):
+                    if isinstance(r, Exception):
+                        names = ["UGC Briefs", "Funnel Strategy", "Survey"]
+                        print(f"       [!] {names[i]} failed: {str(r)[:50]}")
+
+            except asyncio.TimeoutError:
+                print("       [!] New generators global timeout (300s)")
+                ugc_briefs, funnel_strategy, survey = [], {}, {}
+
+            insights["ugc_briefs"] = ugc_briefs if isinstance(ugc_briefs, list) else []
+            insights["funnel_strategy"] = funnel_strategy if isinstance(funnel_strategy, dict) else {}
+            insights["post_purchase_survey"] = survey if isinstance(survey, dict) else {}
+            print(f"       -> {len(ugc_briefs)} UGC briefs, funnel strategy: {'OK' if funnel_strategy and not funnel_strategy.get('_fallback') else 'fallback'}, survey: {'OK' if survey and not survey.get('_fallback') else 'fallback'}")
+
             # Generate full report
             insights["full_report"] = self._generate_full_report(
                 brand, insights, ad_library_results, competitor_results
             )
-            
+
             # CRITICAL: Sanitize insights to convert datetime to ISO strings before DB insert
             sanitized_insights = _sanitize_for_json(insights)
             
@@ -1222,7 +1290,10 @@ class ResearchOrchestrator:
                 'tiktok_trends',            # TikTok: Trending sounds, hashtags, content patterns
                 'hooks_library',            # Structured hooks library for creative briefs
                 'instagram_brand_presence', # Brand voice, content pillars, archetype
-                'ctp_data', 'ctp_hypothesis', 'ctp_stats'  # Creative Target Personas
+                'ctp_data', 'ctp_hypothesis', 'ctp_stats',  # Creative Target Personas
+                'ugc_briefs',              # UGC creator briefs
+                'funnel_strategy',         # Full funnel creative strategy
+                'post_purchase_survey'     # Post-purchase survey questions
             }
             filtered_insights = {k: v for k, v in sanitized_insights.items() if k in valid_insight_fields}
             
@@ -1473,14 +1544,16 @@ class ResearchOrchestrator:
                         ad_library_data=None,
                         ad_creative_patterns=None
                     ),
-                    timeout=600.0
+                    timeout=3600.0  # 60 min — stance classification needs ~20s/batch × 93 batches
                 )
                 insights["ctp_data"] = ctp_result.get("ctps", [])
                 insights["ctp_hypothesis"] = ctp_result.get("hypothesis", [])
                 insights["ctp_stats"] = ctp_result.get("stats", {})
                 print(f"    [+] {len(ctp_result.get('ctps', []))} Creative Target Personas generated")
             except Exception as e:
-                print(f"    [!] CTP generation error: {str(e)[:80]}")
+                import traceback
+                print(f"    [!] CTP generation error: {type(e).__name__}: {str(e)[:200]}")
+                traceback.print_exc()
                 insights["ctp_data"] = []
                 insights["ctp_hypothesis"] = []
                 insights["ctp_stats"] = {}
@@ -1521,17 +1594,77 @@ class ResearchOrchestrator:
             scripts, thumbnails, ab_tests = await asyncio.gather(
                 gen_scripts(), gen_thumbnails(), gen_ab_tests()
             )
-            
+
             insights["generated_scripts"] = scripts if isinstance(scripts, list) else []
             insights["thumbnail_suggestions"] = thumbnails if isinstance(thumbnails, list) else []
             insights["ab_test_suggestions"] = ab_tests if isinstance(ab_tests, list) else []
             print(f"    [+] Generated: {len(scripts)} scripts, {len(thumbnails)} thumbnails, {len(ab_tests)} A/B tests")
-            
+
+            # =============================================
+            # STEP 4b: Run the three newer generators (UGC briefs, Funnel Strategy, Survey)
+            # These were missing from reprocess_insights() even though they exist in run_full_research.
+            # =============================================
+            ad_patterns = {}
+            if isinstance(preserved_ad_data.get("ad_creative_patterns"), dict):
+                ad_patterns = preserved_ad_data["ad_creative_patterns"]
+
+            async def gen_ugc_briefs_rp():
+                try:
+                    return await self.ugc_brief_generator.generate_briefs(
+                        brand_info=brand_info, ad_patterns=ad_patterns, insights=insights, num_briefs=3
+                    )
+                except Exception as e:
+                    print(f"       [!] UGC Briefs error: {str(e)[:80]}")
+                    return []
+
+            async def gen_funnel_rp():
+                try:
+                    return await self.funnel_strategy_generator.generate_strategy(
+                        brand_info=brand_info, ad_patterns=ad_patterns, insights=insights,
+                        competitor_data=preserved_ad_data
+                    )
+                except Exception as e:
+                    print(f"       [!] Funnel Strategy error: {str(e)[:80]}")
+                    return {}
+
+            async def gen_survey_rp():
+                try:
+                    return await self.survey_generator.generate_survey(
+                        brand_info=brand_info, insights=insights
+                    )
+                except Exception as e:
+                    print(f"       [!] Survey error: {str(e)[:80]}")
+                    return {}
+
+            try:
+                new_gen_results = await asyncio.wait_for(
+                    asyncio.gather(
+                        gen_ugc_briefs_rp(), gen_funnel_rp(), gen_survey_rp(),
+                        return_exceptions=True
+                    ),
+                    timeout=300.0
+                )
+                ugc_briefs_rp = new_gen_results[0] if isinstance(new_gen_results[0], list) else []
+                funnel_strategy_rp = new_gen_results[1] if isinstance(new_gen_results[1], dict) else {}
+                survey_rp = new_gen_results[2] if isinstance(new_gen_results[2], dict) else {}
+            except asyncio.TimeoutError:
+                print("       [!] New generators global timeout (300s)")
+                ugc_briefs_rp, funnel_strategy_rp, survey_rp = [], {}, {}
+
+            insights["ugc_briefs"] = ugc_briefs_rp
+            insights["funnel_strategy"] = funnel_strategy_rp
+            insights["post_purchase_survey"] = survey_rp
+            print(
+                f"    [+] Generated: {len(ugc_briefs_rp)} UGC briefs, "
+                f"funnel: {'OK' if funnel_strategy_rp and not funnel_strategy_rp.get('_fallback') else 'fallback'}, "
+                f"survey: {'OK' if survey_rp and not survey_rp.get('_fallback') else 'fallback'}"
+            )
+
             # =============================================
             # STEP 5: Generate full report and save
             # =============================================
             print(f"[5/5] Generating full report and saving...")
-            
+
             insights["full_report"] = self._generate_full_report(
                 brand, insights, {}, {}
             )
@@ -1625,6 +1758,10 @@ class ResearchOrchestrator:
                 ctp_data=insights.get("ctp_data"),
                 ctp_hypothesis=insights.get("ctp_hypothesis"),
                 ctp_stats=insights.get("ctp_stats"),
+                # New generators (Fase 3): UGC briefs / Funnel strategy / Post-purchase survey
+                ugc_briefs=insights.get("ugc_briefs"),
+                funnel_strategy=insights.get("funnel_strategy"),
+                post_purchase_survey=insights.get("post_purchase_survey"),
                 full_report=insights.get("full_report"),
                 created_at=datetime.now()
             )
@@ -3360,11 +3497,13 @@ class ResearchOrchestrator:
         competitors: List[str],
         facebook_url: Optional[str] = None,
         instagram_url: Optional[str] = None,
-        ad_library_page_id: Optional[str] = None
+        ad_library_page_id: Optional[str] = None,
+        override_ad_library_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Run Ad Library scraping and analysis.
         Uses ad_library_page_id (priority) or facebook_url/instagram_url to find correct Ad Library page.
+        If override_ad_library_url is provided (user-pasted URL), auto-discovery is skipped.
         """
         results = {
             "brand_ads": None,
@@ -3373,88 +3512,78 @@ class ResearchOrchestrator:
             "landing_pages": [],
             "total_ads_analyzed": 0
         }
-        
+
         try:
             # =====================================================
-            # 1. FIND AND SCRAPE BRAND ADS (curious_coder actor)
-            # Strategy: FB URL → page_id → view_all → page name search
+            # 1. FIND AND SCRAPE BRAND ADS — manual override OR same path as competitors.
             # =====================================================
             from ..config import settings
             from .adlibrary.apify_facebook import get_apify_facebook_service
-            apify = get_apify_facebook_service()
             max_ads = settings.AD_LIBRARY_MAX_ADS
 
             brand_ads = None
-            resolved_page_id = ad_library_page_id
-            fb_handle = extract_fb_handle(facebook_url)
 
-            # STRATEGY 1: Facebook page URL (most reliable — 100% precision + gives page_id)
-            if facebook_url and not brand_ads:
-                print(f"    [Ad Library] Strategy 1: Facebook URL → {facebook_url}")
-                raw_ads = await apify.scrape_by_facebook_url(facebook_url, limit=max_ads)
-                if raw_ads:
-                    # Get page_id from results for free
-                    if not resolved_page_id:
-                        resolved_page_id = apify.get_page_id_from_results(raw_ads)
-                        if resolved_page_id:
-                            print(f"    [Ad Library] Extracted page_id={resolved_page_id} from FB URL results")
-                    # Filter by brand name (FB URL results are usually 100% correct but just in case)
-                    raw_ads = apify.filter_by_page_name(raw_ads, brand_name)
-                    if raw_ads:
-                        brand_ads = await self.adlib_scraper.process_raw_apify_ads(raw_ads, brand_name, max_ads)
-
-            # STRATEGY 2: view_all_page_id (100% precision when we have the page_id)
-            if resolved_page_id and not brand_ads:
-                print(f"    [Ad Library] Strategy 2: view_all_page_id={resolved_page_id}")
-                raw_ads = await apify.scrape_by_page_id(resolved_page_id, limit=max_ads)
-                if raw_ads:
-                    brand_ads = await self.adlib_scraper.process_raw_apify_ads(raw_ads, brand_name, max_ads)
-
-            # STRATEGY 3: Playwright to find page_id, then view_all_page_id
-            if not brand_ads and not resolved_page_id:
-                print(f"    [Ad Library] Strategy 3: Playwright → page_id")
+            if override_ad_library_url:
+                # Manual URL — skip all discovery, pass directly to the actor.
+                # This is what the user pastes from their browser (the exact
+                # Ad Library URL for this advertiser with view_all_page_id).
+                self._log(f"[Ad Library] Using manual override URL (skipping discovery): {override_ad_library_url}")
                 try:
-                    from .adlibrary.playwright_search import get_playwright_search
-                    playwright_search = await get_playwright_search()
-                    ig_handle = extract_ig_handle(instagram_url)
-                    usernames_to_try = []
-                    if ig_handle:
-                        usernames_to_try.append(ig_handle)
-                    if fb_handle:
-                        usernames_to_try.append(fb_handle)
-                    usernames_to_try.append(brand_name.lower().replace(" ", ""))
-
-                    resolved_page_id = await playwright_search.find_page_id_by_clicking_advertiser(
-                        usernames_to_try=usernames_to_try
-                    )
-                    if resolved_page_id:
-                        print(f"    [Ad Library] Playwright found page_id={resolved_page_id}")
-                        raw_ads = await apify.scrape_by_page_id(resolved_page_id, limit=max_ads)
-                        if raw_ads:
-                            brand_ads = await self.adlib_scraper.process_raw_apify_ads(raw_ads, brand_name, max_ads)
-                    else:
-                        print(f"    [Ad Library] Playwright could not find page_id for '{brand_name}'")
-                except Exception as e:
-                    print(f"    [!] Playwright error: {e}")
-
-            # STRATEGY 4: search by page name (fallback — may include other pages)
-            if not brand_ads:
-                print(f"    [Ad Library] Strategy 4: Page name search '{brand_name}'")
-                raw_ads = await apify.scrape_by_page_name(brand_name, limit=max_ads)
-                if raw_ads:
-                    raw_ads = apify.filter_by_page_name(raw_ads, brand_name)
+                    apify_service = get_apify_facebook_service()
+                    raw_ads = await apify_service._run_actor(override_ad_library_url, max_ads)
+                    self._log(f"[Ad Library] Manual URL: Apify returned {len(raw_ads) if raw_ads else 0} raw records")
                     if raw_ads:
-                        # Extract page_id from filtered results
-                        if not resolved_page_id:
-                            resolved_page_id = apify.get_page_id_from_results(raw_ads)
                         brand_ads = await self.adlib_scraper.process_raw_apify_ads(raw_ads, brand_name, max_ads)
+                        if brand_ads:
+                            brand_ads["brand"] = brand_name
+                            brand_ads.pop("competitor_name", None)
+                            ads_count = len(brand_ads.get("ads", []))
+                            self._log(f"[Ad Library] Manual URL yielded {ads_count} processed ads")
+                            if ads_count == 0:
+                                brand_ads = None
+                except Exception as e:
+                    self._log(f"[Ad Library][!] Manual URL error: {type(e).__name__}: {str(e)[:200]}")
+                    brand_ads = None
+            else:
+                # Use the SAME method as competitors (scrape_competitor_ads).
+                # That path is battle-tested — it handles: DuckDuckGo discovery,
+                # /p/Name-PAGEID/ URL extraction, FB URL scraping, and page-name
+                # search fallback. Competitor brands like Sephora/MAC/Fenty all
+                # find 20+ ads through it.
+                self._log(f"[Ad Library] Scraping brand '{brand_name}' (same method as competitors)")
+                try:
+                    brand_ads = await self.adlib_scraper.scrape_competitor_ads(
+                        competitor_name=brand_name,
+                        competitor_url=website_url,
+                        facebook_url=facebook_url,
+                        limit=max_ads,
+                    )
+                    # scrape_competitor_ads keys the dict with "competitor_name"; the
+                    # rest of this pipeline expects a brand-shaped dict. Rewrite the
+                    # label and strip stubs.
+                    if brand_ads:
+                        brand_ads["brand"] = brand_name
+                        brand_ads.pop("competitor_name", None)
+                        real_ads = [
+                            a for a in brand_ads.get("ads", [])
+                            if not str(a.get("library_id", "")).startswith("unknown_")
+                        ]
+                        dropped = len(brand_ads.get("ads", [])) - len(real_ads)
+                        if dropped:
+                            self._log(f"[Ad Library] Filtered {dropped} stub ad(s)")
+                        brand_ads["ads"] = real_ads
+                        if not real_ads:
+                            brand_ads = None
+                except Exception as e:
+                    self._log(f"[Ad Library][!] Error: {type(e).__name__}: {str(e)[:200]}")
+                    brand_ads = None
 
             if not brand_ads or not brand_ads.get("ads"):
-                print("    [!] No ads found via any method")
-            
+                self._log(f"[Ad Library][!] No real ads found for '{brand_name}'")
+
             if brand_ads:
                 ads_found = len(brand_ads.get("ads", []))
-                print(f"    [Ad Library] {ads_found} ads encontrados")
+                self._log(f"[Ad Library] {ads_found} ads encontrados para la marca")
                 
                 if ads_found > 0:
                     # Analyze with Gemini - 30 unique videos + 20 unique statics
@@ -4293,11 +4422,23 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
 
         self._log(f"[CTP] Classifying {len(snippets_for_stance)} snippets by stance...")
 
-        # Step 3: Run stance classification (batch)
-        stance_classified = await self.stance_classifier.classify_batch(
-            snippets_for_stance,
-            batch_size=10
-        )
+        # Step 3: Run stance classification (parallel batches).
+        # Wrapped in try/except so the crash appears in session_X.jsonl (the
+        # stance classifier uses print() internally, which only goes to stdout).
+        try:
+            stance_classified = await self.stance_classifier.classify_batch(
+                snippets_for_stance,
+                batch_size=10,
+                concurrency=5
+            )
+        except Exception as e:
+            import traceback
+            self._log(
+                f"[CTP][ERROR] Stance classification crashed: {type(e).__name__}: {str(e)[:200]}",
+                level="error",
+            )
+            self._log(f"[CTP][TRACE] {traceback.format_exc()[:800]}", level="error")
+            raise
 
         successful = sum(1 for s in stance_classified if s.get("general_stance") and s["general_stance"] != "unknown")
         self._log(f"[CTP] Successfully stance-classified {successful}/{len(stance_classified)} snippets")

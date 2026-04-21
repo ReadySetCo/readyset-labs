@@ -364,6 +364,14 @@ export interface Insight {
     caption_style?: string;
   };
   full_report?: string;
+  // Creative Target Personas (from stance-based clustering)
+  ctp_data?: any[];
+  ctp_hypothesis?: any[];
+  ctp_stats?: Record<string, any>;
+  // Fase 3 generators
+  ugc_briefs?: any[];
+  funnel_strategy?: Record<string, any>;
+  post_purchase_survey?: Record<string, any>;
   created_at: string;
 }
 
@@ -408,8 +416,12 @@ export interface FullResearchResult {
 // API Functions
 
 // Brands
-export const createBrand = async (name: string, website_url?: string): Promise<Brand> => {
-  const { data } = await api.post('/brands/', { name, website_url });
+export const createBrand = async (
+  name: string,
+  website_url?: string,
+  ad_library_url?: string,
+): Promise<Brand> => {
+  const { data } = await api.post('/brands/', { name, website_url, ad_library_url });
   return data;
 };
 

@@ -298,6 +298,12 @@ Return a JSON object with:
 ## COMMUNITY INSIGHTS
 - "community_insights": [3-5 observations about this community's values, concerns, and language patterns]
 
+## COMMUNITY DIALECT (slang, shorthand, insider phrases)
+- "community_dialect": [5-10 slang terms, shorthand, insider phrases, or recurring references that appear across multiple posts. These are the words this audience uses WITH EACH OTHER — not marketing language. For each: the exact phrase, what it means, and how it could be used in ad copy to signal cultural proximity.]
+
+## WEAK SIGNALS (low frequency, high creative potential)
+- "weak_signals": [3-5 pain points or desires that appear only once or twice but have high hook potential. For each: the exact quote, why it has creative potential despite low frequency, and 1-2 hook variations built from it. A pain point mentioned once might be the angle nobody is running.]
+
 Return ONLY valid JSON."""
 
         try:

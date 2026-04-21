@@ -10,6 +10,10 @@ import {
   Sparkles,
   Lightbulb,
   Quote,
+  Users,
+  ClipboardList,
+  MessageCircle,
+  Brain,
 } from 'lucide-react';
 import type { Insight } from '../api/client';
 
@@ -17,6 +21,8 @@ export default function GeneratedContentView({ insights, sessionId }: { insights
   const scripts = (insights as any).generated_scripts || [];
   const thumbnails = (insights as any).thumbnail_suggestions || [];
   const abTests = (insights as any).ab_test_suggestions || [];
+  const ugcBriefs = (insights as any).ugc_briefs || [];
+  const survey = (insights as any).post_purchase_survey || {};
   const verbatimQuotes = (insights as any).verbatim_quotes || [];
   const painPoints = (insights as any).pain_points || [];
   const [expandedSources, setExpandedSources] = useState<Set<number>>(new Set());
@@ -297,8 +303,181 @@ export default function GeneratedContentView({ insights, sessionId }: { insights
         </div>
       )}
 
+      {/* UGC Creator Briefs */}
+      {ugcBriefs && ugcBriefs.length > 0 && (
+        <div className="glass-card p-6">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Users className="w-5 h-5 text-orange-400" />
+            UGC Creator Briefs ({ugcBriefs.length})
+          </h3>
+          <div className="space-y-6">
+            {ugcBriefs.map((brief: any, i: number) => (
+              <div key={i} className="bg-slate-800/50 p-5 rounded-xl border border-orange-500/20">
+                <div className="flex items-start justify-between mb-3">
+                  <h4 className="font-semibold text-orange-300">{brief.brief_name}</h4>
+                  <div className="flex gap-2">
+                    <span className="tag text-xs bg-orange-500/20 text-orange-400">{brief.angle_type}</span>
+                    <span className="tag text-xs bg-slate-700 text-slate-300">{brief.awareness_level}</span>
+                  </div>
+                </div>
+
+                {brief.target_persona && (
+                  <p className="text-sm text-slate-400 mb-3">
+                    <span className="text-orange-400">Target:</span> {brief.target_persona}
+                  </p>
+                )}
+
+                {brief.overview && (
+                  <p className="text-sm text-slate-300 mb-4">{brief.overview}</p>
+                )}
+
+                {/* Hook Non-Negotiable */}
+                {brief.hook_non_negotiable && (
+                  <div className="mb-4 p-4 bg-red-500/10 rounded-lg border border-red-500/20">
+                    <h5 className="text-xs font-bold text-red-400 mb-2 uppercase tracking-wider">Hook — Non-Negotiable</h5>
+                    <p className="text-white font-medium text-lg mb-2">"{brief.hook_non_negotiable.exact_line}"</p>
+                    <div className="space-y-1 text-xs text-slate-400">
+                      {brief.hook_non_negotiable.visual_direction && <p><span className="text-red-400">Visual:</span> {brief.hook_non_negotiable.visual_direction}</p>}
+                      {brief.hook_non_negotiable.energy && <p><span className="text-red-400">Energy:</span> {brief.hook_non_negotiable.energy}</p>}
+                      {brief.hook_non_negotiable.what_not_to_do && <p><span className="text-red-400">Do NOT:</span> {brief.hook_non_negotiable.what_not_to_do}</p>}
+                    </div>
+                  </div>
+                )}
+
+                {/* Talking Points */}
+                {brief.body_talking_points && brief.body_talking_points.length > 0 && (
+                  <div className="mb-4">
+                    <h5 className="text-xs font-medium text-orange-400 mb-2">Talking Points:</h5>
+                    <ol className="space-y-2">
+                      {brief.body_talking_points.map((point: string, j: number) => (
+                        <li key={j} className="text-sm text-slate-300 flex items-start gap-2">
+                          <span className="bg-orange-500/20 text-orange-400 rounded-full w-5 h-5 flex items-center justify-center text-xs flex-shrink-0 mt-0.5">{j + 1}</span>
+                          {point}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {/* Must Say Verbatim */}
+                {brief.must_say_verbatim && brief.must_say_verbatim.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-2">
+                    <span className="text-xs text-slate-500">Must say:</span>
+                    {brief.must_say_verbatim.map((phrase: string, j: number) => (
+                      <span key={j} className="tag text-xs bg-amber-500/20 text-amber-300">"{phrase}"</span>
+                    ))}
+                  </div>
+                )}
+
+                {/* Emotional Journey */}
+                {brief.emotional_journey && (
+                  <div className="mb-3 p-2 bg-slate-900/50 rounded flex items-center gap-2">
+                    <Brain className="w-4 h-4 text-pink-400 flex-shrink-0" />
+                    <p className="text-xs text-slate-400"><span className="text-pink-400">Emotional Arc:</span> {brief.emotional_journey}</p>
+                  </div>
+                )}
+
+                {/* Close */}
+                {brief.close && (
+                  <div className="mb-3 p-3 bg-green-500/10 rounded-lg border border-green-500/20">
+                    <p className="text-xs text-green-400 mb-1">Close:</p>
+                    <p className="text-sm text-slate-300">{brief.close.how_it_ends}</p>
+                    {brief.close.cta_language && <p className="text-sm text-white font-medium mt-1">CTA: "{brief.close.cta_language}"</p>}
+                  </div>
+                )}
+
+                {/* Production Notes */}
+                {brief.production_notes && (
+                  <div className="text-xs text-slate-500 space-y-1 mt-3 border-t border-slate-700/50 pt-3">
+                    {brief.production_notes.setting && <p><span className="text-slate-400">Setting:</span> {brief.production_notes.setting}</p>}
+                    {brief.production_notes.wardrobe && <p><span className="text-slate-400">Wardrobe:</span> {brief.production_notes.wardrobe}</p>}
+                    {brief.production_notes.what_to_avoid && (
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        <span className="text-red-400">Avoid:</span>
+                        {brief.production_notes.what_to_avoid.map((item: string, j: number) => (
+                          <span key={j} className="tag text-xs bg-red-500/10 text-red-300">{item}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Post-Purchase Survey */}
+      {survey && (survey.core_five?.length > 0 || survey.single_best_question) && (
+        <div className="glass-card p-6">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <ClipboardList className="w-5 h-5 text-teal-400" />
+            Post-Purchase Survey (Creative Intelligence)
+          </h3>
+
+          {/* Single Best Question */}
+          {survey.single_best_question && (
+            <div className="mb-6 p-4 bg-teal-500/10 rounded-xl border border-teal-500/20">
+              <p className="text-xs text-teal-400 font-bold uppercase tracking-wider mb-2">The Single Best Question</p>
+              <p className="text-white font-medium text-lg mb-2">"{survey.single_best_question.question}"</p>
+              {survey.single_best_question.why_its_the_best && (
+                <p className="text-sm text-slate-400">{survey.single_best_question.why_its_the_best}</p>
+              )}
+            </div>
+          )}
+
+          {/* Core Five */}
+          {survey.core_five && survey.core_five.length > 0 && (
+            <div className="mb-6">
+              <h4 className="text-sm font-medium text-teal-400 mb-3">Core Questions ({survey.core_five.length})</h4>
+              <div className="space-y-3">
+                {survey.core_five.map((q: any, i: number) => (
+                  <div key={i} className="bg-slate-800/50 p-4 rounded-xl border border-slate-700/50">
+                    <p className="text-white font-medium mb-2 flex items-start gap-2">
+                      <MessageCircle className="w-4 h-4 text-teal-400 mt-0.5 flex-shrink-0" />
+                      "{q.question}"
+                    </p>
+                    <div className="grid md:grid-cols-2 gap-2 text-xs text-slate-400">
+                      {q.creative_output_designed_for && <p><span className="text-teal-400">Designed to produce:</span> {q.creative_output_designed_for}</p>}
+                      {q.awareness_level_surfaced && <p><span className="text-teal-400">Surfaces:</span> {q.awareness_level_surfaced} language</p>}
+                    </div>
+                    {q.example_winning_response && (
+                      <p className="text-xs text-slate-500 mt-2 italic">Example response: "{q.example_winning_response}"</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Category-Specific Questions */}
+          {survey.category_specific_questions && survey.category_specific_questions.length > 0 && (
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-teal-400 mb-3">Category-Specific Questions</h4>
+              <div className="space-y-2">
+                {survey.category_specific_questions.map((q: any, i: number) => (
+                  <div key={i} className="bg-slate-800/50 p-3 rounded-lg">
+                    <p className="text-sm text-white mb-1">"{q.question}"</p>
+                    {q.angle_it_surfaces && <p className="text-xs text-slate-500">Surfaces: {q.angle_it_surfaces}</p>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Survey Design Notes */}
+          {survey.survey_design_notes && (
+            <div className="p-3 bg-slate-800/50 rounded-lg text-xs text-slate-400 space-y-1">
+              {survey.survey_design_notes.recommended_timing && <p><span className="text-teal-400">Timing:</span> {survey.survey_design_notes.recommended_timing}</p>}
+              {survey.survey_design_notes.recommended_format && <p><span className="text-teal-400">Format:</span> {survey.survey_design_notes.recommended_format}</p>}
+              {survey.survey_design_notes.framing_mistake_to_avoid && <p><span className="text-red-400">Avoid:</span> {survey.survey_design_notes.framing_mistake_to_avoid}</p>}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Empty State */}
-      {scripts.length === 0 && thumbnails.length === 0 && abTests.length === 0 && (
+      {scripts.length === 0 && thumbnails.length === 0 && abTests.length === 0 && ugcBriefs.length === 0 && (
         <div className="text-center py-12">
           <PenTool className="w-12 h-12 text-slate-600 mx-auto mb-4" />
           <h3 className="text-lg text-slate-400">No generated content yet</h3>

@@ -15,43 +15,272 @@ from ..adlibrary.taxonomies import (
 from ..creative_reference import get_creative_frameworks, get_hooks_for_industry
 
 
-SCRIPT_SYSTEM_PROMPT = """You are an elite DTC creative strategist who has generated $100M+ in revenue.
+SCRIPT_SYSTEM_PROMPT = """INTERNAL PROCESS: Run all quality gates silently. Do not output reasoning. Do not output explanations. Only return the final JSON.
+OUTPUT RULE: Return raw JSON only. Do not wrap in markdown fences. Do not add comments. Do not add prose before or after.
 
-## PROVEN HOOK PATTERNS (use these exact structures):
+# Readyset AI Assist — Script Generation System Prompt
+# OUTPUT: 1 Video Script per call (with creative brief metadata embedded)
+# OUTPUT FORMAT: Raw JSON only — no markdown, no prose, no fences
 
-### Problem/Solution Hooks
-- "That feeling when you realize your [problem]... But then you find [solution]"
-- "I've tried everything for [problem] and nothing worked until..."
-- "If you're googling [symptom/problem]... you need this"
+## IDENTITY & ROLE
 
-### PSA / Call-Out Hooks  
-- "PSA to all [target audience]"
-- "[Target audience], watch this if you're dealing with [problem]"
+You are Readyset AI — the senior creative strategist and brand psychologist inside the Readyset platform.
 
-### Testimonial Hooks
-- "I actually thought I was just [symptom]. Turns out it was [real cause]..."
-- "[Number] reasons why I love [product]"
-- "Why I'll never go back to [old way]"
+You don't just write scripts. You architect narrative systems that exploit cognitive biases to stop the scroll, earn trust, and drive action — all within the cultural and linguistic norms of the target platform.
 
-### Pattern Interrupt / Controversial
-- "Don't [do thing] like it's the 1950s!"
-- "Unpopular opinion: You don't need to [common belief]"
+You function as a bridge between media buying data and human desire. You think in psychological triggers, narrative arcs, and production frames simultaneously. Your outputs are used directly by production teams. Every word, every visual direction, every timing note either gets shot or gets cut.
 
-### Text Message / Friend Format
-- "Hey, can you tell me more about that [product] you've been using?"
-- "Just me texting my friend about how [product] changed my life"
+## CREATIVE PHILOSOPHY
 
-## AD BODY STRUCTURES:
-1. Problem → Agitate → Solution → Results → CTA
-2. Testimonial Journey: Struggle → Discovery → Product → Results → CTA
-3. Quick Listicle: Hook → Reason 1 → Reason 2 → Reason 3 → CTA
+### 1. Find the Brand Soul First
 
-## RULES:
-- Hook MUST be in first 1-3 seconds (before thumb scrolls)
-- Feel native to platform (TikTok = casual, fast; Meta = can be longer)
-- Use customer's EXACT words from verbatims
-- Address objections naturally in narrative
-- Clear, compelling CTA
+Before generating a single word of copy, identify three things from the brand data:
+
+**The Core Belief:** The brand's unique worldview that drives everything.
+> GOOD: "Credit should not be a privilege — it's a tool." / "Quality skincare was never meant to cost $300."
+
+**The Brand Enemy:** What or who the brand is disrupting or fighting against. Specific, named, emotionally resonant.
+> BAD: "The status quo."
+> GOOD: "The predatory banking system that profit-maps first-time borrowers and calls it 'credit building.'"
+
+**The Transformation:** The exact emotional shift the product enables — from the specific "Before" state (pain, frustration, embarrassment, stagnation) to the specific "After" state (relief, confidence, momentum, pride). This Before-After contrast must be physically visible in the script's camera work and editing energy.
+
+### 2. Brand Data Assimilation Protocol
+
+To ensure the brand feels the output is theirs — not just a vertical template — execute this silent internal cross-check:
+
+**Rule A — The Verbatim Echo:**
+Locate one (1) unique phrase from the brand's verbatim quotes or customer language. This exact phrase MUST appear in the hook or body copy.
+
+**Rule B — The Friction Point:**
+Identify the specific, granular micro-moment of frustration from customer pain points. The Problem Agitation shot must visually depict this exact micro-moment, not a generic category version of it.
+> BAD: "Customer looks frustrated at their phone."
+> GOOD: "ECU of the payment terminal screen: DECLINED. Held for 0.8s. Let the embarrassment land. [SFX: card machine beep — three times]. Smash cut to dark frame."
+
+**Rule C — The Vertical Differentiation Anchor:**
+In notes, explicitly name the #1 Creative Cliche this script is replacing and what it is being replaced with.
+
+### 3. Behavioral Economics Layering
+
+Every angle must be rooted in at least one cognitive trigger. Tag each scene with its trigger. The narrative arc must be psychologically coherent.
+
+| Trigger | Definition | Best Used When |
+|---|---|---|
+| Loss Aversion | People fear loss 2x more than equivalent gain | ICP is bleeding money, time, or status without realizing it |
+| Social Signaling | Product elevates user's identity/status in their tribe | Purchase is publicly visible or identity-adjacent |
+| Zero-Risk Bias | Eliminating psychological friction of "making a mistake" | High-ticket, skepticism-heavy, or new-category products |
+| The Pratfall Effect | Admitting a small flaw builds disproportionate trust | Challenger/underdog brand; category full of puffery |
+| Scarcity / FOMO | Limited availability triggers urgency independent of value | Drops, seasonal offers, limited cohorts |
+| Authority Bias | Credentialed sources or social proof reduce resistance | Regulated industries (finance, health, legal) |
+| The Zeigarnik Effect | Unfinished loops create tension demanding resolution | Hook opens a question the viewer cannot ignore |
+| Anchoring | First number shapes all subsequent value perception | Pricing comparisons, time savings, result claims |
+| Reciprocity | Giving genuine value first creates obligation to engage | Educational/tutorial content before the offer |
+
+### 4. Trigger Escalation Closed Loop (mandatory narrative arc)
+
+| Script Phase | Function | Trigger Used |
+|---|---|---|
+| Scene 1 — Hook | Initiate the loop | Zeigarnik Effect (open the question) |
+| Scene 2-3 — Agitation | Intensify the Primary Trigger | The trigger matching the ICP's awareness state (e.g., Loss Aversion) |
+| Scene 4-5 — Resolution | Relieve the Primary Trigger via product | Zero-Risk Bias and/or Authority Bias |
+| Final Scene — CTA | Close the loop with urgency | Scarcity/FOMO or Reciprocity |
+
+### 5. Linguistic Authenticity — The Insider Test
+
+Extract 2-3 industry-specific terms or ICP slang from the brand data or vertical knowledge. Embed these in dialogue and overlays — as proof of cultural proximity to the target audience.
+
+| Vertical | Example Insider Language |
+|---|---|
+| SaaS / Tech | "Churn", "tech debt", "LTV", "CAC", "ship fast", "zero downtime" |
+| Fitness | "Progressive overload", "macros", "DOMS", "PRs", "your third pull day" |
+| Finance / DTC Credit | "APR", "utilization rate", "hard pull", "credit-building loop", "thin file" |
+| Beauty / Skincare | "Skin barrier", "comedogenic", "actives", "slugging", "glass skin" |
+| Food / Nutrition | "Macro-friendly", "whole food", "bioavailability", "clean label", "binders" |
+| Fashion | "Colorway", "drop", "grail", "deadstock", "capsule" |
+| Health / Wellness | "Cortisol spike", "nervous system reset", "circadian rhythm", "somatic" |
+| Pets | "BARF diet", "prey model", "kibble-fed", "zoonotic", "enrichment" |
+| Education / Coaching | "Cohort", "async", "mindset shift", "accountability partner", "framework" |
+
+### 6. Data-Backed Hook Strategy (Motion Creative Benchmarks 2026)
+
+Based on $1.3B+ in ad spend across 550,000+ creatives (BFCM 2025 - Jan 2026), these hook typologies carry the highest hit rates:
+
+**Tier 1 — Highest hit rate & spend use ratio:**
+- Newness — "Introducing the only [X] that does [Y]"
+- Price anchor — "Stop paying $X for Y when you can get Z for $W"
+- Sale / Urgency — "Last 48 hours / Limited drop / Selling out fast"
+- Offer only — Lead with the deal before any product explanation
+- Confession — "I was embarrassed to admit I..."
+- Bold claim — Audacious, specific, provable: "We replaced [big thing] in 7 days"
+- Shocking statement — "Most [category] advice is completely wrong"
+- Curiosity / If-then — "If you're still doing X, watch this before you regret it"
+- Direct address — "Attention [specific persona]..."
+- Warning — "Do NOT buy [category] until you see this"
+- Authority — "As seen in [publication] / [N]K customers later..."
+- Giveaway / Exclusivity — "Only for the next 200 people..."
+
+**Hook selection rule:** Match hook type to brand tone AND ICP awareness state:
+- Pain-aware: Confession, Warning, Loss Aversion
+- Solution-aware: Bold Claim, Demo, Zero-Risk Bias
+- Product-aware: Offer, Urgency, Social Signaling
+
+### 7. Visual Format Intelligence by Vertical
+
+| Vertical | Top Formats by Hit Rate |
+|---|---|
+| Health & Wellness | Stitch, Reaction video, Unboxing, Founder, Transformation |
+| Fashion & Apparel | Post-it, Quiz, Stylized product shot, Meme, Product showcase |
+| Beauty & Personal Care | Unboxing, Testimonial, Tutorial, Before & After |
+| Food & Nutrition | Demo, How-to, Lifestyle-product, Montage |
+| Technology | Screen recording, Feature benefit, How-to, Expert explained |
+| Finance | Authority, Case study, Statistic, Problem agitation |
+| Fitness & Sports | Transformation, Before & After, POV, Founder |
+| Home & Lifestyle | Montage, Demo, Product showcase, How-to |
+| Education | How-to, Expert explained, Screen recording, Listicle |
+| Pets | UGC, Testimonial, Founder, POV |
+
+Universal high-performers: Offer-First Banner (1.3x spend use ratio), Demo (6.5% hit rate), Testimonial (6.5% hit rate), Unboxing (9.8% hit rate).
+
+## THE HOOK LAB
+
+For every script, generate 3 distinct hook options. All three must:
+- Be 15 words or fewer (spoken) or a precise visual direction
+- Map to a different psychological trigger
+- Be genuinely different in structure — not the same idea reworded
+
+Required hook types:
+1. **Pattern Interrupt** — Breaks visual or auditory expectation in 1 second or less. Trigger: Zeigarnik Effect.
+2. **Direct Call-out** — Targets the ICP's identity, pain, or behavior immediately. Trigger: Loss Aversion or Social Signaling.
+3. **Curiosity Gap** — Opens an unresolved loop that can only be closed by watching. Trigger: Zeigarnik Effect.
+
+## CREATIVE FRAMEWORKS
+
+Use exactly ONE per script:
+
+**F1: Problem-Solution** — Pain-aware ICPs.
+Hook - Agitation (Friction Point visual) - Solution reveal - Proof - Transformation - CTA
+
+**F2: Before-After-Bridge** — Transformation products.
+Hook (Show Before) - Feel the before - Bridge (introduce product) - Show After clearly - CTA
+
+**F3: Testimonial / Social Proof** — Trust-building, retargeting.
+Hook (Disarming first-person) - Problem confession - Discovery - Specific result - CTA
+
+**F4: Listicle / Reasons Why** — Feature-rich, Education, Tech.
+Hook (N reasons why...) - Point 1 + visual proof - Point 2 - Point 3 - Offer anchor - CTA
+
+**F5: How-To / Tutorial** — Products with learning curve or ritual.
+Hook (The right way to [X]) - Step 1 - Step 2 - Step 3 - Result reveal - CTA
+
+**F6: Pattern Interrupt / Contrarian** — Saturated categories.
+Hook (breaks expectation) - Everyone does X, but... - Brand POV - Evidence - CTA
+
+## PLATFORM-NATIVE PRODUCTION RULES
+
+### TikTok
+- Hook: 0-1.5 seconds — no grace period
+- Tone: conversational, lo-fi, direct — native content, not advertising
+- Cuts: 1.5-2.5s per shot average
+- Text overlays: essential; assume muted viewing
+
+### Instagram Reels
+- Hook: 0-2 seconds; slightly more polished than TikTok
+
+### Meta (Facebook/Instagram Feed)
+- Hook: 0-3 seconds — more tolerance; slightly older demographic
+- Offer-first banner: 1.3x spend-use ratio — use for conversion campaigns
+
+### YouTube
+- 16:9; first 5 seconds are the skip/watch decision
+- More narrative depth and production value accepted
+
+### All Platforms
+- NEVER open with logo or brand name
+- First frame = most compelling frame
+- Text overlays: max 2-3 words/second
+- CTAs: on-screen AND spoken
+
+## SHOT COUNT BY DURATION
+
+| Duration | Shots | Narrative Budget |
+|---|---|---|
+| 15s | 3 | Hook + Product reveal + CTA |
+| 30s | 5 | Hook - Problem - Solution - Proof - CTA |
+| 45s | 7 | Hook - Problem - Agitation - Solution - Demo - Social Proof - CTA |
+| 60s+ | 8+ | Hook - Problem - Story - Solution - Features - Proof - Offer - CTA |
+
+## PRODUCTION STANDARDS
+
+### Shot-to-Shot Continuity
+Each visual description must reference spatial continuity, camera movement, and lighting from the previous shot.
+
+### Visual-VO Sync Principle
+Never duplicate information between spoken words and visual text.
+- Spoken words: emotion and narrative
+- Visual text: proof and action
+
+### Audio Design
+Embed SFX and music cues explicitly:
+- [SFX: sharp cash register ding at 0:03]
+- [Music: lo-fi trap, 120bpm — beat drops as product rotates into frame]
+- [Silence: 0.5s pause before hook lands — forces cognitive attention]
+
+### VO Cadence
+Speakable in one natural breath. Max 12-15 words for hooks. Contractions, active verbs. No corporate phrasing.
+
+### Objection Preemption Shot
+At least one scene addresses the #1 purchase barrier without sounding defensive.
+
+## KPI MAPPING
+
+| Campaign Goal | Primary KPI |
+|---|---|
+| Awareness | Thumb-stop rate >65% at 3s |
+| Consideration | View-through rate >40% at 50% completion |
+| Conversions | CTA click-through >1.8%, CPA below brand threshold |
+| Retargeting | Completed views >55%, add-to-cart rate improvement |
+
+### CTA Temperature
+- High urgency / pain: "Claim your 30% off before midnight."
+- Trust / retargeting: "See why 14,200 customers switched."
+- Curiosity / discovery: "Tap to see how it works in 10 seconds."
+- Soft awareness: "Follow for more." / "Save this for later."
+
+## ANTI-HALLUCINATION GUARDS
+
+- Never invent statistics, customer counts, certifications, or press mentions
+- Missing proof: use qualitative language: "Trusted by [vertical] professionals"
+- Every quantified claim must trace to brand data
+- Feature only the most relevant product
+
+## QUALITY GATES — INTERNAL SILENT SELF-REVIEW
+
+Run silently before outputting. Rewrite any failing section:
+
+1. Verbatim Echo: Does the hook or body contain at least one phrase from customer verbatims?
+2. Friction Point: Does the Problem scene depict the specific micro-moment of pain, not a generic version?
+3. Vertical Differentiation: Does notes state the #1 Creative Cliche being replaced?
+4. Hook Gate: Does the hook stop a thumb-scroll in 1.5s (TikTok) / 2s (IG) / 3s (Meta)? No brand name opener?
+5. Hook Lab: Are all three hooks meaningfully different in structure AND psychological mechanism?
+6. Trigger Escalation: Does the psychologicalTrigger sequence form a coherent closed loop?
+7. Voice Gate: Does the script pass the brand tone mirror test? No forbidden corporate phrases?
+8. Insider Test: Does the dialogue sound written by a peer inside this industry?
+9. Continuity: Do all scenes flow visually? Is visual-VO sync maintained?
+10. Proof Gate: Every claim backed by visual, testimonial, demo, or verbatim quote?
+11. CTA Gate: Final CTA matches emotional temperature, on-screen AND spoken?
+12. Production Gate: Could a DP, editor, and talent execute every shot without clarification?
+
+## ABSOLUTE PROHIBITIONS
+
+- Never output prose, reasoning, or explanations outside the JSON object
+- Never wrap output in markdown fences
+- Never start a hook with the brand name
+- Never write vague visual directions ("show the product", "happy scene", "customer smiling")
+- Never use forbidden corporate language: "empower", "leverage", "innovative", "cutting-edge", "seamlessly", "game-changing", "holistic", "synergy", "next level", "unlock your potential", "experience the difference", "industry-leading"
+- Never produce the same angle twice with different vocabulary
+- Never fabricate statistics, customer counts, certifications, or press mentions
+- Never describe what the ad IS — describe what it DOES to the viewer emotionally
+- Never produce a CTA weaker than the emotional pitch that preceded it
 
 ALWAYS return valid JSON only. No markdown, no explanation."""
 
@@ -79,13 +308,14 @@ class ScriptGenerator:
         # Build rich context (but organized efficiently)
         context = self._build_context(brand_info, ad_patterns, insights)
         
-        # Frameworks to generate (different for each script)
+        # Frameworks to generate (aligned with DRAFT F1-F6 creative frameworks)
         frameworks = [
-            ("Problem-Solution", "Question"),
-            ("Testimonial", "Testimonial Quote"),
-            ("How-To", "How-To"),
-            ("Listicle", "Listicle Number"),
-            ("Before-After", "Statement"),
+            ("Problem-Solution", "Direct Call-out"),
+            ("Before-After-Bridge", "Curiosity Gap"),
+            ("Testimonial", "Pattern Interrupt"),
+            ("Listicle", "Direct Call-out"),
+            ("How-To", "Curiosity Gap"),
+            ("Pattern Interrupt / Contrarian", "Pattern Interrupt"),
         ][:num_scripts]
         
         print(f"       -> Generating {num_scripts} PRO scripts with Gemini...")
@@ -481,119 +711,134 @@ class ScriptGenerator:
         """Generate one script with rich context and 90s timeout."""
         
         # Build focused but rich prompt with ALL enriched data
-        prompt = f"""Generate ONE professional 60-90 second video ad script. Use the REAL customer data below.
+        # Organized to match DRAFT system prompt's expected data fields
+        prompt = f"""Generate ONE professional video ad script using the Readyset AI system. Use the REAL customer data below.
 
-=== BRAND ===
-Brand: {context['brand_name']}
-Sector: {context['sector']}
+=== BRAND DATA ===
+Brand Name: {context['brand_name']}
+Sector / Vertical: {context['sector']}
 Products: {context['products']}
-Value Props: {context['value_props']}
-Target: {context['target_audience']}
+Value Propositions: {context['value_props']}
+Target Audience: {context['target_audience']}
 
-=== TARGET CUSTOMER PERSONAS ({len(context['icps'])} identified) ===
-{chr(10).join(context['icps']) if context['icps'] else 'General audience in the ' + context['sector'] + ' space'}
-
-=== REAL CUSTOMER PAIN POINTS ({len(context['pain_points'])} from scraped data) ===
+=== CUSTOMER PAIN POINTS ({len(context['pain_points'])} from scraped data) ===
 {chr(10).join(context['pain_points']) if context['pain_points'] else '- Common frustrations in this category'}
 
-=== CUSTOMER LANGUAGE - USE THESE EXACT PHRASES! ===
-These are the exact words and expressions customers use. Incorporate them to sound authentic:
-{chr(10).join(context.get('customer_language', [])) if context.get('customer_language') else '- Natural conversational language'}
-
-=== WHAT CUSTOMERS WANT (desires) ===
-{chr(10).join(context.get('customer_desires', [])) if context.get('customer_desires') else '- Better solutions, convenience, results'}
-
-=== VERBATIM CUSTOMER QUOTES ({len(context['verbatim_quotes'])} real quotes) ===
-These are real quotes from Reddit, Trustpilot, reviews, and social media. Incorporate at least 3-4 into your script:
+=== VERBATIM QUOTES — GOLD (The Verbatim Echo rule requires at least one) ===
 {chr(10).join(context['verbatim_quotes']) if context['verbatim_quotes'] else '- "I wish there was a better solution"'}
 
-=== MESSAGING ANGLES THAT RESONATE (with evidence) ===
-{chr(10).join(context.get('messaging_angles', [])) if context.get('messaging_angles') else '- Value-focused messaging'}
+=== CUSTOMER LANGUAGE — USE THESE EXACT PHRASES ===
+{chr(10).join(context.get('customer_language', [])) if context.get('customer_language') else '- Natural conversational language'}
 
-=== PURCHASE TRIGGERS (what makes people buy) ===
-{chr(10).join(context.get('purchase_triggers', [])) if context.get('purchase_triggers') else '- Urgency and social proof'}
+=== CUSTOMER DESIRES ===
+{chr(10).join(context.get('customer_desires', [])) if context.get('customer_desires') else '- Better solutions, convenience, results'}
 
-=== OBJECTIONS TO ADDRESS ({len(context['objections'])} identified) ===
-Pick one objection and weave the counter naturally into the script:
+=== ICPs ({len(context['icps'])} identified) — Pick ONE primary ICP for this script ===
+{chr(10).join(context['icps']) if context['icps'] else 'General audience in the ' + context['sector'] + ' space'}
+
+=== OBJECTIONS ({len(context['objections'])} identified) — Address #1 barrier naturally ===
 {chr(10).join(context['objections']) if context['objections'] else 'OBJECTION: "Is it worth the price?"\nCOUNTER: Focus on value and results'}
 
-=== RESEARCH-BACKED HOOK SUGGESTIONS ===
-These hooks were identified from analyzing customer language and pain points:
-{chr(10).join(context.get('recommended_hooks', [])) if context.get('recommended_hooks') else '- Use pain point questions\n- Use customer language verbatims'}
+=== MESSAGING ANGLES (with evidence) ===
+{chr(10).join(context.get('messaging_angles', [])) if context.get('messaging_angles') else '- Value-focused messaging'}
 
-=== WHAT'S WORKING (from {len(context.get('transcription_examples', []))} analyzed ads) ===
+=== PURCHASE TRIGGERS ===
+{chr(10).join(context.get('purchase_triggers', [])) if context.get('purchase_triggers') else '- Urgency and social proof'}
+
+=== TOP HOOKS FROM RESEARCH ===
+{chr(10).join(context.get('recommended_hooks', [])) if context.get('recommended_hooks') else '- Use pain point questions'}
+
+=== AD LIBRARY PATTERNS (from {len(context.get('transcription_examples', []))} analyzed ads) ===
 Winning Frameworks: {', '.join(context['top_frameworks']) if context['top_frameworks'] else 'Problem-Solution, Testimonial'}
 Winning Hook Types: {', '.join(context['top_hooks']) if context['top_hooks'] else 'Question, Statement'}
 Emotions that Convert: {', '.join(context['top_emotions']) if context['top_emotions'] else 'Relief, Curiosity'}
 Avg Hook Strength: {context['avg_hook_strength']}/5
 
-=== SUCCESSFUL AD TRANSCRIPTIONS (model your script after these) ===
-{chr(10).join(context['transcription_examples'][:5]) if context['transcription_examples'] else 'No examples available - create based on best practices'}
+=== SUCCESSFUL AD TRANSCRIPTIONS (study their structure) ===
+{chr(10).join(context['transcription_examples'][:5]) if context['transcription_examples'] else 'No examples available'}
 
-=== REAL BRAND AD EXAMPLES (analyzed from Ad Library) ===
-These are real ads from {context['brand_name']} that have been analyzed. Study their structure:
+=== BRAND AD EXAMPLES (from Ad Library) ===
 {chr(10).join(context.get('brand_ad_examples', [])[:3]) if context.get('brand_ad_examples') else 'No brand ad examples available'}
 
-=== COMPETITOR AD EXAMPLES (what competitors are doing) ===
+=== COMPETITOR AD EXAMPLES ===
 {chr(10).join(context.get('competitor_ad_examples', [])[:3]) if context.get('competitor_ad_examples') else 'No competitor ad examples available'}
 
-=== TOP PERFORMING HOOKS FROM ADS (proven to work) ===
-These hooks are from actual analyzed ads with high hook strength scores:
+=== TOP PERFORMING HOOKS FROM ADS ===
 {chr(10).join(context.get('best_hooks_from_ads', [])[:8]) if context.get('best_hooks_from_ads') else 'No hook data available'}
 
-=== COMPETITOR HOOKS (for competitive awareness) ===
+=== COMPETITOR HOOKS ===
 {chr(10).join(context.get('competitor_hooks', [])) if context.get('competitor_hooks') else 'No competitor data'}
 
-=== INDUSTRY-SPECIFIC HOOK TEMPLATES (proven patterns for {context['sector']}) ===
-Use these proven hook structures, adapting them to {context['brand_name']}:
-{chr(10).join('• ' + h for h in context.get('industry_hook_templates', [])) if context.get('industry_hook_templates') else '• Standard hook patterns'}
+=== INDUSTRY HOOK TEMPLATES (proven for {context['sector']}) ===
+{chr(10).join('- ' + h for h in context.get('industry_hook_templates', [])) if context.get('industry_hook_templates') else '- Standard hook patterns'}
 
-=== TIKTOK TRENDING INSIGHTS (what's working on TikTok right now) ===
-{chr(10).join(context.get('tiktok_insights', [])) if context.get('tiktok_insights') else 'No TikTok-specific data available'}
+=== TIKTOK TRENDS ===
+{chr(10).join(context.get('tiktok_insights', [])) if context.get('tiktok_insights') else 'No TikTok-specific data'}
 
-=== INSTAGRAM BRAND VOICE (how this brand sounds/looks on Instagram) ===
-Use these to maintain brand consistency:
-{chr(10).join(context.get('instagram_brand', [])) if context.get('instagram_brand') else 'No Instagram brand data available'}
+=== INSTAGRAM BRAND VOICE ===
+{chr(10).join(context.get('instagram_brand', [])) if context.get('instagram_brand') else 'No Instagram brand data'}
 
-=== HOOKS LIBRARY (proven hooks from creative briefs) ===
+=== HOOKS LIBRARY ===
 {chr(10).join(context.get('hooks_from_library', [])) if context.get('hooks_from_library') else 'No hooks library available'}
 
-=== YOUR TASK ===
+=== CREATIVE DIRECTION ===
 Framework: {framework}
 Hook Type: {hook_type}
+Platform: TikTok / Instagram Reels / Meta Feed
+Duration: 60-90 seconds
+Campaign Goal: Conversions
 
-CRITICAL REQUIREMENTS:
-1. First 3 seconds: Pattern-interrupt hook that scores 4+/5 (use the RECOMMENDED HOOKS and study the transcription examples)
-2. USE CUSTOMER'S EXACT WORDS from verbatim quotes AND customer language phrases - don't paraphrase!
-3. Address one specific objection from the list - show how to counter it naturally
-4. Connect to customer DESIRES - show them getting what they want
-5. Include 8-12 distinct scenes with detailed visual and audio directions
-6. End with a clear, compelling CTA that creates urgency
-7. Make it feel authentic, not like an ad - more like a real person sharing their experience
+EXECUTE the full Readyset AI system:
+1. Find the Brand Soul (Core Belief, Brand Enemy, Transformation)
+2. Run Brand Data Assimilation Protocol (Verbatim Echo, Friction Point, Vertical Differentiation Anchor)
+3. Select primary psychological trigger matched to ICP awareness state
+4. Build the Trigger Escalation Closed Loop across all scenes
+5. Generate the Hook Lab (3 distinct hooks: Pattern Interrupt, Direct Call-out, Curiosity Gap)
+6. Write production-ready scenes with full visual/audio/SFX direction
+7. Run all Quality Gates silently before output
 
 Return this exact JSON structure:
 {{
     "script_name": "Catchy descriptive name that hints at the angle",
     "framework": "{framework}",
     "hook_type": "{hook_type}",
-    "hook": "The exact opening 3 seconds - make it impossible to scroll past",
+    "hook": "The CHOSEN hook from hook_lab — the strongest for this framework and brand tone",
     "hook_strength_estimate": 4,
     "target_emotion": "Primary emotion this script evokes",
     "target_persona": "Which ICP this script speaks to",
     "estimated_length_seconds": 75,
-    "full_script": "COMPLETE script with [VISUAL: description], [AUDIO: what's said], [TEXT OVERLAY: caption] for each scene. 200-300 words, ready to shoot.",
-    "scene_breakdown": [
-        {{"scene": 1, "duration": "0-3s", "visual": "Detailed visual description", "audio": "Exact dialogue", "text_overlay": "Caption text"}},
-        {{"scene": 2, "duration": "3-10s", "visual": "Description", "audio": "Dialogue", "text_overlay": ""}},
-        {{"scene": 3, "duration": "...", "visual": "...", "audio": "...", "text_overlay": "..."}}
+    "brand_psychology": {{
+        "core_belief": "The brand's worldview in 1 charged sentence",
+        "brand_enemy": "What/who the brand is disrupting — specific, named",
+        "transformation": "Before state -> After state emotional shift"
+    }},
+    "strategic_rationale": "2 sentences: name the Primary Trigger, explain WHY it matches this ICP's awareness state. Connect to the Trigger Escalation sequence.",
+    "hook_lab": [
+        {{"type": "Pattern Interrupt", "psychological_trigger": "Zeigarnik Effect", "hook": "Exact hook text, 15 words max", "notes": "Why this stops scroll for this ICP"}},
+        {{"type": "Direct Call-out", "psychological_trigger": "Loss Aversion", "hook": "Exact hook text, 15 words max", "notes": "The specific pain being targeted"}},
+        {{"type": "Curiosity Gap", "psychological_trigger": "Zeigarnik Effect", "hook": "Exact hook text, 15 words max", "notes": "The open loop and why ICP cannot scroll past"}}
     ],
-    "cta": "Specific call to action with urgency element",
-    "why_it_works": "Data-backed explanation referencing specific pain points, quotes, and customer language you used",
-    "verbatims_used": ["Exact quote 1 you incorporated", "Exact quote 2 you used", "Exact quote 3"],
-    "customer_language_used": ["Exact phrase 1 from customer language", "Phrase 2 you incorporated"],
+    "general_treatment": {{
+        "style": "2-3 sentences: visual and audio treatment, production style (UGC vs high-production), casting energy",
+        "editing_energy": 8,
+        "sound_landscape": "Audio DNA: music genre/energy, SFX density, use of silence, VO delivery style",
+        "pre_visualization": "Emotional texture direction contrasting Before and After states. Written for DP, gaffer, and talent."
+    }},
+    "insider_terminology": ["Term 1 — how it appears in script", "Term 2 — how it appears", "Term 3 — how it appears"],
+    "full_script": "COMPLETE script with [VISUAL: description], [AUDIO: spoken words], [TEXT OVERLAY: caption], [SFX: sound effect] for each scene. 200-400 words, ready to shoot.",
+    "scene_breakdown": [
+        {{"scene": 1, "duration": "0-3s", "visual": "Full DP-level direction: shot type, subject action, environment, lighting, camera movement, safe-zone compliance", "audio": "Exact spoken words", "text_overlay": "Exact text + placement", "psychological_trigger": "Zeigarnik Effect"}},
+        {{"scene": 2, "duration": "3-10s", "visual": "The Friction Point shot — specific micro-moment of pain, NOT generic", "audio": "Spoken words", "text_overlay": "", "psychological_trigger": "Loss Aversion"}},
+        {{"scene": 3, "duration": "...", "visual": "...", "audio": "...", "text_overlay": "...", "psychological_trigger": "..."}}
+    ],
+    "cta": "Specific call to action — on-screen AND spoken, matched to CTA temperature",
+    "why_it_works": "Data-backed explanation referencing: the psychological trigger used, specific pain points, customer language incorporated, and how the Trigger Escalation resolves",
+    "verbatims_used": ["Exact quote 1 you incorporated", "Exact quote 2", "Exact quote 3"],
+    "customer_language_used": ["Exact phrase 1 from customer language", "Phrase 2"],
     "desire_addressed": "Which customer desire this script fulfills",
-    "objection_addressed": "The specific objection this handles and how",
-    "pain_points_addressed": ["Pain point 1", "Pain point 2", "Pain point 3"]
+    "objection_addressed": "The specific objection and how the script handles it",
+    "pain_points_addressed": ["Pain point 1", "Pain point 2", "Pain point 3"],
+    "notes": "#1 Creative Cliche Replaced: [old format] -> [new format we are using and why]. Any [INFERENCE REQUIRED] flags."
 }}"""
 
         # Call Gemini with 120 second timeout per script (increased for long prompts)
@@ -637,7 +882,7 @@ Return this exact JSON structure:
 [FINAL SCENE - CTA]
 {script.get('cta', 'Call to action')}
 """
-        
+
         parts = []
         for scene in scenes:
             s_num = scene.get('scene', '?')
@@ -645,8 +890,12 @@ Return this exact JSON structure:
             visual = scene.get('visual', '')
             audio = scene.get('audio', '')
             text = scene.get('text_overlay', '')
-            
-            part = f"[SCENE {s_num} - {dur}]"
+            trigger = scene.get('psychological_trigger', '')
+
+            header = f"[SCENE {s_num} - {dur}]"
+            if trigger:
+                header += f" ({trigger})"
+            part = header
             if visual:
                 part += f"\n[VISUAL: {visual}]"
             if audio:
@@ -654,54 +903,79 @@ Return this exact JSON structure:
             if text:
                 part += f"\n[TEXT: {text}]"
             parts.append(part)
-        
+
         return "\n\n".join(parts)
     
     def _create_fallback_script(self, brand_name: str, framework: str, num: int) -> Dict[str, Any]:
-        """Create professional fallback script."""
+        """Create professional fallback script with full schema compatibility."""
         return {
             "script_name": f"{framework} Script #{num}",
             "framework": framework,
-            "hook_type": "Problem Statement",
-            "hook": f"Still struggling with [problem]? Here's what finally worked for me...",
+            "hook_type": "Direct Call-out",
+            "hook": "Still struggling with [problem]? Here's what finally worked for me...",
             "hook_strength_estimate": 4,
             "target_emotion": "Relief",
+            "target_persona": "General audience",
             "estimated_length_seconds": 60,
-            "full_script": f"""[SCENE 1 - 0-3s]
-[VISUAL: Close-up, frustrated expression]
+            "brand_psychology": {
+                "core_belief": f"{brand_name} believes there's a better way.",
+                "brand_enemy": "The outdated solutions that waste people's time and money.",
+                "transformation": "Frustration and wasted effort -> Relief and confidence"
+            },
+            "strategic_rationale": "Uses Loss Aversion to surface the cost of inaction, then resolves with Zero-Risk Bias via the product's value proposition.",
+            "hook_lab": [
+                {"type": "Pattern Interrupt", "psychological_trigger": "Zeigarnik Effect", "hook": "Stop. You're wasting money on this every single month.", "notes": "Jarring command opens curiosity loop"},
+                {"type": "Direct Call-out", "psychological_trigger": "Loss Aversion", "hook": "Still struggling with [problem]? Here's what finally worked for me...", "notes": "Targets the ICP's core frustration directly"},
+                {"type": "Curiosity Gap", "psychological_trigger": "Zeigarnik Effect", "hook": "I almost didn't try this — but the results were too good to ignore.", "notes": "Opens unresolved loop demanding resolution"}
+            ],
+            "general_treatment": {
+                "style": "UGC-native, handheld, direct-to-camera energy. Talent speaks like a friend sharing a discovery.",
+                "editing_energy": 7,
+                "sound_landscape": "No music during hook (silence forces attention). Lo-fi beat enters at solution reveal. On-camera VO throughout.",
+                "pre_visualization": "Tight, slightly claustrophobic framing during the problem phase. Opens up to wider, warmer shots as the solution lands."
+            },
+            "insider_terminology": [],
+            "full_script": f"""[SCENE 1 - 0-3s] (Zeigarnik Effect)
+[VISUAL: MCU — talent looks directly at camera, slight frustration visible]
 "I was SO tired of dealing with [problem]..."
 
-[SCENE 2 - 3-12s]
-[VISUAL: B-roll showing the struggle]
+[SCENE 2 - 3-12s] (Loss Aversion)
+[VISUAL: B-roll showing the specific micro-moment of frustration]
 "I tried everything. Nothing worked."
 
-[SCENE 3 - 12-25s]
-[VISUAL: Discovery moment]
+[SCENE 3 - 12-25s] (Reciprocity)
+[VISUAL: Discovery moment — talent's expression shifts to curiosity]
 "Then someone told me about {brand_name}..."
 
-[SCENE 4 - 25-40s]
-[VISUAL: Using product, genuine reaction]
+[SCENE 4 - 25-40s] (Zero-Risk Bias)
+[VISUAL: Using product, genuine reaction, warm lighting shift]
 "And honestly? It changed everything."
 
-[SCENE 5 - 40-52s]
-[VISUAL: Results/transformation]
+[SCENE 5 - 40-52s] (Authority Bias)
+[VISUAL: Results/transformation — concrete proof visible]
 "Now I [benefit]. Every single day."
 
-[SCENE 6 - 52-60s]
-[VISUAL: Direct to camera with product]
+[SCENE 6 - 52-60s] (Scarcity / FOMO)
+[VISUAL: Direct to camera with product visible]
 "Click the link and try {brand_name}. You'll thank me later."
 [TEXT: Link in bio / Shop now]
 """,
             "scene_breakdown": [
-                {"scene": 1, "duration": "0-3s", "visual": "Close-up frustrated face", "audio": "I was SO tired of dealing with [problem]...", "text_overlay": ""},
-                {"scene": 2, "duration": "3-12s", "visual": "B-roll problem", "audio": "I tried everything. Nothing worked.", "text_overlay": ""},
-                {"scene": 3, "duration": "12-25s", "visual": "Discovery", "audio": f"Then someone told me about {brand_name}...", "text_overlay": ""},
-                {"scene": 4, "duration": "25-40s", "visual": "Using product", "audio": "And honestly? It changed everything.", "text_overlay": ""},
-                {"scene": 5, "duration": "40-52s", "visual": "Results", "audio": "Now I [benefit]. Every single day.", "text_overlay": ""},
-                {"scene": 6, "duration": "52-60s", "visual": "CTA", "audio": f"Click the link and try {brand_name}.", "text_overlay": "Shop now"},
+                {"scene": 1, "duration": "0-3s", "visual": "MCU — talent looks at camera, frustration visible", "audio": "I was SO tired of dealing with [problem]...", "text_overlay": "", "psychological_trigger": "Zeigarnik Effect"},
+                {"scene": 2, "duration": "3-12s", "visual": "B-roll showing the specific micro-moment of frustration", "audio": "I tried everything. Nothing worked.", "text_overlay": "", "psychological_trigger": "Loss Aversion"},
+                {"scene": 3, "duration": "12-25s", "visual": "Discovery moment — expression shifts", "audio": f"Then someone told me about {brand_name}...", "text_overlay": "", "psychological_trigger": "Reciprocity"},
+                {"scene": 4, "duration": "25-40s", "visual": "Using product, warm lighting shift", "audio": "And honestly? It changed everything.", "text_overlay": "", "psychological_trigger": "Zero-Risk Bias"},
+                {"scene": 5, "duration": "40-52s", "visual": "Results — concrete proof visible", "audio": "Now I [benefit]. Every single day.", "text_overlay": "", "psychological_trigger": "Authority Bias"},
+                {"scene": 6, "duration": "52-60s", "visual": "Direct to camera with product", "audio": f"Click the link and try {brand_name}.", "text_overlay": "Shop now", "psychological_trigger": "Scarcity / FOMO"},
             ],
             "cta": f"Click the link and try {brand_name}. You'll thank me later.",
-            "why_it_works": "Problem-solution framework with personal story creates relatability",
+            "why_it_works": "Problem-solution framework using Trigger Escalation: Zeigarnik opens the loop, Loss Aversion surfaces the cost of inaction, Zero-Risk Bias resolves via product, Scarcity closes with urgency.",
+            "verbatims_used": [],
+            "customer_language_used": [],
+            "desire_addressed": "",
+            "objection_addressed": "",
+            "pain_points_addressed": [],
+            "notes": "#1 Creative Cliche Replaced: [generic talking head] -> [specific micro-moment of pain in Scene 2]. [INFERENCE REQUIRED: Verify brand data before shoot]",
             "script_num": num,
             "_fallback": True
         }

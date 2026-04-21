@@ -28,7 +28,21 @@ class ApifyFacebookAdsService:
     # ------------------------------------------------------------------
 
     async def _run_actor(self, url: str, limit: int) -> List[Dict[str, Any]]:
-        """Run the curious_coder actor with a single URL and return raw ads."""
+        """Run the curious_coder actor with a single URL and return raw ads.
+
+        Payload is aligned with the actor's official input schema:
+          - urls: [{url}]           — page or Ad Library URLs
+          - limitPerSource: int     — cap per input URL
+          - count: int              — total records target (the actor can
+                                      deliver slightly more than this)
+          - scrapeAdDetails: true   — pull per-ad EU Reach / transparency info
+          - scrapePageAds.*         — when the URL is a page, control the
+                                      time window / active status / sort / country
+          - proxy: residential      — required by the actor's docs; without
+                                      a proxy Meta's rate limiter returns
+                                      error records for many pages (this was
+                                      the root cause of the Il Makiage failure).
+        """
         if not self.api_token:
             print("    [!] Apify token not configured")
             return []
@@ -36,6 +50,15 @@ class ApifyFacebookAdsService:
         actor_input = {
             "urls": [{"url": url}],
             "limitPerSource": limit,
+            "count": limit,
+            "scrapeAdDetails": True,
+            "scrapePageAds.activeStatus": "all",
+            "scrapePageAds.countryCode": "ALL",
+            "scrapePageAds.sortBy": "most_recent",
+            "proxy": {
+                "useApifyProxy": True,
+                "apifyProxyGroups": ["RESIDENTIAL"],
+            },
         }
 
         try:
@@ -87,7 +110,27 @@ class ApifyFacebookAdsService:
                     print(f"    [!] Empty dataset response (dataset_id={dataset_id})")
                     return []
                 ads = dr.json()
-                print(f"    [Apify] Retrieved {len(ads)} ads")
+                print(f"    [Apify] Retrieved {len(ads)} records")
+
+                # Explicit error-record detection.
+                # The actor returns records shaped like
+                #   {"error": "...", "errorCode": "...", "url": "..."}
+                # when it can't reach a given page (e.g. proxy / rate-limit /
+                # region restriction). Filter them out and log so we know WHY.
+                if isinstance(ads, list):
+                    errors = [a for a in ads if isinstance(a, dict) and (a.get("error") or a.get("errorCode"))]
+                    if errors:
+                        first_err = errors[0]
+                        print(
+                            f"    [Apify][!] {len(errors)} error record(s) filtered. "
+                            f"First: code={first_err.get('errorCode')!r}, "
+                            f"msg={str(first_err.get('error'))[:120]!r}"
+                        )
+                        ads = [
+                            a for a in ads
+                            if not (isinstance(a, dict) and (a.get("error") or a.get("errorCode")))
+                        ]
+                        print(f"    [Apify] {len(ads)} records remaining after error filter")
                 return ads
 
         except Exception as e:

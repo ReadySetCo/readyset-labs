@@ -56,7 +56,7 @@ export default function ChatPanel({ sessionId, brandId }: ChatPanelProps) {
     });
 
     // Load chat history when panel opens or session changes
-    const { data: historyData, isLoading: isLoadingHistory } = useQuery({
+    const { data: historyData } = useQuery({
         queryKey: ['chatHistory', sessionId],
         queryFn: () => (sessionId ? getChatHistory(sessionId) : Promise.resolve(null)),
         enabled: isOpen && !!sessionId,

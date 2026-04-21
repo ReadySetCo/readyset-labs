@@ -17,6 +17,7 @@ import type { Brand } from '../api/client';
 export default function Dashboard() {
   const [brandName, setBrandName] = useState('');
   const [websiteUrl, setWebsiteUrl] = useState('');
+  const [adLibraryUrl, setAdLibraryUrl] = useState('');
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -28,12 +29,13 @@ export default function Dashboard() {
 
   // Create brand mutation
   const createMutation = useMutation({
-    mutationFn: ({ name, url }: { name: string; url?: string }) =>
-      createBrand(name, url || undefined),
+    mutationFn: ({ name, url, adLibUrl }: { name: string; url?: string; adLibUrl?: string }) =>
+      createBrand(name, url || undefined, adLibUrl || undefined),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['brands'] });
       setBrandName('');
       setWebsiteUrl('');
+      setAdLibraryUrl('');
     },
   });
 
@@ -58,7 +60,8 @@ export default function Dashboard() {
 
     const brand = await createMutation.mutateAsync({
       name: brandName.trim(),
-      url: websiteUrl.trim() || undefined
+      url: websiteUrl.trim() || undefined,
+      adLibUrl: adLibraryUrl.trim() || undefined,
     });
 
     startResearchMutation.mutate(brand.id);
@@ -88,7 +91,7 @@ export default function Dashboard() {
           Start New Research
         </h2>
 
-        <div className="grid md:grid-cols-2 gap-4 mb-6">
+        <div className="grid md:grid-cols-2 gap-4 mb-4">
           <div>
             <label className="block text-sm text-slate-400 mb-2">Brand Name *</label>
             <input
@@ -109,6 +112,23 @@ export default function Dashboard() {
               className="input-field"
             />
           </div>
+        </div>
+
+        <div className="mb-6">
+          <label className="block text-sm text-slate-400 mb-2">
+            Ad Library URL (optional)
+          </label>
+          <input
+            type="text"
+            placeholder="e.g., https://www.facebook.com/ads/library/?view_all_page_id=1270817949729510&..."
+            value={adLibraryUrl}
+            onChange={(e) => setAdLibraryUrl(e.target.value)}
+            className="input-field"
+          />
+          <p className="text-xs text-slate-500 mt-1">
+            If you already know the advertiser's Ad Library link (from the browser),
+            paste it here. The scraper will use it directly instead of guessing.
+          </p>
         </div>
 
         <button

@@ -9,7 +9,7 @@ STANCE_CLASSIFICATION_PROMPT = """You are classifying customer feedback snippets
 
 General Stance is NOT about what triggered them or what blocks them. It's about HOW they fundamentally see, understand, and relate to the problem. Two people can both be triggered by "product_failure" but have completely different stances: one is a fatalist ("nothing works, it's genetic"), the other is a bio-hacker ("that product failed, but I'll find the right protocol").
 
-STANCE TAXONOMY (use these when they fit, or propose a new one if the data clearly warrants it):
+STANCE TAXONOMY — YOU MUST USE ONE OF THESE 8 KEYS EXACTLY. Do not invent new keys. If no stance fits perfectly, pick the closest one:
 
 - "fatalist" — Believes the problem is inevitable/genetic/permanent. Has given up trying. "It runs in my family, there's nothing I can do."
 - "skeptic" — Has tried multiple solutions, been burned by false promises. Demands hard proof. "I've tried everything and nothing works. Show me a real clinical study."
@@ -20,12 +20,14 @@ STANCE TAXONOMY (use these when they fit, or propose a new one if the data clear
 - "budget_pragmatist" — Wants to solve it but price/value is the lens for every decision. "Is this actually worth $50/month when I could just buy generic minoxidil?"
 - "authority_follower" — Only trusts doctors, experts, official sources. Won't try anything without professional endorsement. "My dermatologist hasn't mentioned this, so I'm not touching it."
 
+CRITICAL: general_stance MUST be one of: fatalist, skeptic, bio_hacker, desperate_seeker, passive_accepter, social_conformist, budget_pragmatist, authority_follower. No variations, no new keys, no compound keys.
+
 There are {num_snippets} snippets below. Classify EACH one.
 
 {snippets_text}
 
 For EACH snippet, identify:
-- general_stance: The stance key from the taxonomy above, OR a new descriptive key if none fit (use snake_case)
+- general_stance: EXACTLY one of the 8 keys listed above (strict — no new keys)
 - stance_label: Human-readable name for this stance (e.g., "The Fatalist", "The Skeptic")
 - stance_belief: A first-person belief statement that captures this person's worldview (15-30 words)
 - stance_confidence: 0.0-1.0
@@ -138,6 +140,8 @@ Return JSON:
         {{
             "angle_name": "Descriptive angle name",
             "angle_description": "1-2 sentence description of the angle approach",
+            "awareness_level": "Unaware|Problem Aware|Solution Aware|Product Aware|Most Aware — which funnel stage this angle targets",
+            "emotional_trigger": "The primary emotion activated: frustration/guilt/relief/embarrassment/pride/aspiration/fear/curiosity",
             "validation_tag": "data_backed|objection_driven|proof_type_match|language_pattern|hypothesis",
             "validation_evidence": "Brief evidence: what data supports this angle"
         }}

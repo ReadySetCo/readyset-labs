@@ -186,6 +186,8 @@ Return a JSON dictionary containing a single key "hooks". The value must be an a
     "hook_type": "question/statement/story/pattern_interrupt/curiosity_gap/testimonial/problem_call_out/transformation",
     "target_emotion": "curiosity/fear/hope/trust/urgency/recognition/aspiration/surprise/relatability",
     "target_persona": "Brief description of who this speaks to",
+    "awareness_level": "Unaware/Problem Aware/Solution Aware/Product Aware/Most Aware — which funnel stage this hook speaks to",
+    "recommended_format": "UGC/Static/Street Interview/Podcast/Founder Ad/Testimonial/Demo — best format for this hook",
     "platform_fit": ["TikTok", "Instagram", "Facebook"],  // Best platforms for this hook
     "pain_point_addressed": "Which pain point this targets (if any)",
     "verbatim_source": "Which customer quote inspired this (if any)",
@@ -252,13 +254,20 @@ Generate {num_hooks} hooks. Be specific to {context['brand_name']}."""
         brand_info: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Organize hooks into structured library."""
+        normalized_hooks = []
+        for hook in raw_hooks:
+            if not isinstance(hook, dict):
+                continue
+            normalized_hook = self._normalize_hook(hook)
+            if normalized_hook.get("hook_text"):
+                normalized_hooks.append(normalized_hook)
         
         library = {
             "brand": brand_info.get("name", "Brand"),
-            "total_hooks": len(raw_hooks),
+            "total_hooks": len(normalized_hooks),
             "generated_at": None,  # Will be set when saving
             
-            "all_hooks": raw_hooks,
+            "all_hooks": normalized_hooks,
             
             # Categorized views
             "by_type": defaultdict(list),
@@ -275,7 +284,7 @@ Generate {num_hooks} hooks. Be specific to {context['brand_name']}."""
         
         total_strength = 0
         
-        for hook in raw_hooks:
+        for hook in normalized_hooks:
             # By type
             hook_type = hook.get("hook_type", "other")
             library["by_type"][hook_type].append(hook)
@@ -310,6 +319,91 @@ Generate {num_hooks} hooks. Be specific to {context['brand_name']}."""
         library["by_strength"] = dict(library["by_strength"])
         
         return library
+
+    def _normalize_hook(self, hook: Dict[str, Any]) -> Dict[str, Any]:
+        """Fill required hook fields even when the LLM returns a partial retry shape."""
+        normalized = dict(hook)
+
+        hook_text = self._string_value(
+            normalized.get("hook_text")
+            or normalized.get("hook")
+            or normalized.get("text")
+            or normalized.get("headline")
+        )
+        hook_type = self._string_value(normalized.get("hook_type") or normalized.get("type")) or "other"
+
+        platform_fit = normalized.get("platform_fit") or normalized.get("platforms")
+        if isinstance(platform_fit, str):
+            platform_fit = [platform_fit]
+        elif not isinstance(platform_fit, list) or not platform_fit:
+            platform_fit = self.HOOK_TYPES.get(hook_type, {}).get(
+                "best_for",
+                ["TikTok", "Instagram", "Facebook"]
+            )
+
+        strength_score = normalized.get("strength_score", normalized.get("score", 3))
+        try:
+            strength_score = int(round(float(strength_score)))
+        except (TypeError, ValueError):
+            strength_score = 3
+
+        normalized["hook_text"] = hook_text
+        normalized["hook_type"] = hook_type
+        normalized["target_emotion"] = (
+            self._string_value(normalized.get("target_emotion") or normalized.get("emotion"))
+            or self.HOOK_TYPES.get(hook_type, {}).get("emotion")
+            or "other"
+        )
+        normalized["target_persona"] = self._string_value(
+            normalized.get("target_persona") or normalized.get("persona")
+        )
+        normalized["platform_fit"] = [self._string_value(platform) for platform in platform_fit if self._string_value(platform)]
+        normalized["pain_point_addressed"] = self._string_value(
+            normalized.get("pain_point_addressed") or normalized.get("pain_point")
+        )
+        normalized["verbatim_source"] = self._string_value(
+            normalized.get("verbatim_source") or normalized.get("source")
+        )
+        normalized["strength_score"] = min(5, max(1, strength_score))
+        normalized["why_it_works"] = self._string_value(
+            normalized.get("why_it_works") or normalized.get("rationale")
+        )
+
+        if not normalized["platform_fit"]:
+            normalized["platform_fit"] = ["General"]
+
+        return normalized
+
+    def _string_value(self, value: Any) -> str:
+        """Convert simple LLM values into display-safe strings."""
+        if value is None:
+            return ""
+        if isinstance(value, str):
+            return value.strip()
+        if isinstance(value, (int, float, bool)):
+            return str(value)
+        if isinstance(value, list):
+            return ", ".join(self._string_value(item) for item in value if self._string_value(item))
+        if isinstance(value, dict):
+            preferred = [
+                "headline",
+                "body",
+                "description",
+                "cta_button",
+                "text",
+                "hook",
+                "name",
+            ]
+            pieces = [self._string_value(value.get(key)) for key in preferred]
+            pieces = [piece for piece in pieces if piece]
+            if pieces:
+                return " ".join(pieces)
+            return " | ".join(
+                f"{key}: {self._string_value(nested_value)}"
+                for key, nested_value in value.items()
+                if self._string_value(nested_value)
+            )
+        return str(value).strip()
     
     def _generate_recommendations(self, library: Dict[str, Any]) -> List[Dict[str, str]]:
         """Generate recommendations based on library analysis."""
