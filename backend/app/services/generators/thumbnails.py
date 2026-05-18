@@ -12,7 +12,7 @@ class ThumbnailSuggester:
     """Generates thumbnail suggestions with short, focused prompts."""
     
     def __init__(self):
-        self.llm = get_llm_client()
+        self.llm = get_llm_client(task_type="creative")
     
     async def suggest_thumbnails(
         self,
@@ -74,66 +74,92 @@ Return JSON array:
 [
     {{
         "concept_name": "Short memorable name",
-        "description": "What the thumbnail shows - be specific about visuals",
+        "thumbnail_type": "UGC/Studio/Lifestyle/Product-focused/Text-led/etc",
+        "visual_description": "What the thumbnail shows - be specific about visuals",
         "visual_elements": ["element1", "element2", "element3"],
         "text_overlay": "Bold text shown on thumbnail (use hook inspiration)",
         "visual_style": "UGC/Studio/Lifestyle/Product-focused/etc",
         "first_frame_element": "Face/Product/Text/Scene/Offer",
-        "emotion_target": "Emotion to evoke",
-        "why_effective": "Why this will stop the scroll - reference the data above"
+        "emotion_evoked": "Emotion to evoke",
+        "why_it_works": "Why this will stop the scroll - reference the data above",
+        "platform_fit": ["TikTok", "Instagram", "Meta"]
     }}
 ]"""
 
         try:
             result = await asyncio.wait_for(
                 self.llm.complete_json(prompt=prompt, temperature=0.7),
-                timeout=30.0  # 30s timeout for thumbnails
+                timeout=60.0  # 60s margin for gpt-5.4 (creative calls observed 22-25s in session 139)
             )
             
             if result and isinstance(result, list):
                 print(f"       -> Generated {len(result)} thumbnail ideas")
-                return result[:num_suggestions]
+                return [self._normalize_thumbnail(item) for item in result[:num_suggestions]]
             elif result and isinstance(result, dict):
                 # Handle wrapped response
                 for key in ["thumbnails", "suggestions", "concepts"]:
                     if key in result and isinstance(result[key], list):
-                        return result[key][:num_suggestions]
+                        return [self._normalize_thumbnail(item) for item in result[key][:num_suggestions]]
         
         except asyncio.TimeoutError:
             print(f"       [!] Thumbnail generation timeout")
         except Exception as e:
-            print(f"       [!] Thumbnail generation failed: {e}")
+            import traceback
+            print(f"       [!] Thumbnail generation failed: {type(e).__name__}: {e}")
+            print(f"       [!] Traceback:\n{traceback.format_exc()}")
         
         # Fallback thumbnails
         print(f"       -> Using fallback thumbnails")
         return self._generate_fallbacks(brand_name, num_suggestions)
+
+    def _normalize_thumbnail(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Keep new sessions canonical even if the LLM returns legacy field names."""
+        if not isinstance(item, dict):
+            return {}
+        visual_elements = item.get("visual_elements") or []
+        if not isinstance(visual_elements, list):
+            visual_elements = [str(visual_elements)]
+        return {
+            **item,
+            "thumbnail_type": item.get("thumbnail_type") or item.get("visual_style") or item.get("first_frame_element"),
+            "visual_description": item.get("visual_description") or item.get("description") or ", ".join(map(str, visual_elements)),
+            "emotion_evoked": item.get("emotion_evoked") or item.get("emotion_target") or item.get("target_emotion"),
+            "why_it_works": item.get("why_it_works") or item.get("why_effective"),
+            "platform_fit": item.get("platform_fit") or item.get("platforms") or [],
+        }
     
     def _generate_fallbacks(self, brand_name: str, num: int) -> List[Dict[str, Any]]:
         """Generate fallback thumbnail suggestions."""
         fallbacks = [
             {
                 "concept_name": "Problem Face",
-                "description": f"Close-up of person with frustrated expression, relatable problem",
+                "thumbnail_type": "UGC",
+                "visual_description": f"Close-up of person with frustrated expression, relatable problem",
                 "visual_elements": ["face", "emotion", "problem context"],
                 "text_overlay": "Sound familiar?",
-                "emotion_target": "Recognition",
-                "why_effective": "Creates immediate emotional connection"
+                "emotion_evoked": "Recognition",
+                "why_it_works": "Creates immediate emotional connection",
+                "platform_fit": ["TikTok", "Instagram", "Meta"]
             },
             {
                 "concept_name": "Before/After Split",
-                "description": f"Split screen showing transformation with {brand_name}",
+                "thumbnail_type": "Transformation",
+                "visual_description": f"Split screen showing transformation with {brand_name}",
                 "visual_elements": ["split screen", "contrast", "product"],
                 "text_overlay": "The difference is real",
-                "emotion_target": "Aspiration",
-                "why_effective": "Shows tangible results"
+                "emotion_evoked": "Aspiration",
+                "why_it_works": "Shows tangible results",
+                "platform_fit": ["TikTok", "Instagram", "Meta"]
             },
             {
                 "concept_name": "Curiosity Question",
-                "description": f"Bold text question with intriguing background",
+                "thumbnail_type": "Text-led",
+                "visual_description": f"Bold text question with intriguing background",
                 "visual_elements": ["text", "minimal design", "curiosity gap"],
                 "text_overlay": "Wait... this actually works?",
-                "emotion_target": "Curiosity",
-                "why_effective": "Creates information gap that demands resolution"
+                "emotion_evoked": "Curiosity",
+                "why_it_works": "Creates information gap that demands resolution",
+                "platform_fit": ["TikTok", "Instagram", "Meta"]
             }
         ]
         return fallbacks[:num]

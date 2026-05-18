@@ -5,6 +5,7 @@ Combines: Website, Google search, Brand Guidelines, Ad Library colors.
 
 import re
 import json
+import traceback
 from typing import Dict, Any, List, Optional
 import httpx
 
@@ -24,7 +25,7 @@ class BrandDNAExtractor:
     def __init__(self):
         self.firecrawl_api_key = settings.FIRECRAWL_API_KEY
         self.firecrawl_base_url = settings.FIRECRAWL_BASE_URL
-        self.llm = get_llm_client()
+        self.llm = get_llm_client(task_type="strategy")
         self.timeout = 60.0
     
     def _get_headers(self) -> Dict[str, str]:
@@ -840,8 +841,9 @@ Return ONLY valid JSON, no other text."""
         except asyncio.TimeoutError:
             print(f"    [!] Vision analysis timeout")
         except Exception as e:
-            print(f"    [!] Vision analysis error: {e}")
-        
+            print(f"    [!] Vision analysis error: {type(e).__name__}: {e}")
+            print(f"    [!] Vision analysis traceback:\n{traceback.format_exc()}")
+
         return colors
     
     def _extract_fonts(self, website_data: Dict) -> List[str]:
@@ -978,17 +980,24 @@ Return ONLY valid JSON, no other text."""
         """Search Google for the brand's Facebook page."""
         try:
             query = f"{brand_name} facebook page site:facebook.com"
-            results = await self.firecrawl.search(query, limit=3)
-            
-            if results:
-                for result in results:
-                    url = result.get("url", "")
-                    # Match official Facebook page URLs
-                    if re.match(r'https?://(?:www\.)?facebook\.com/[^/\s]+/?$', url):
-                        # Skip generic pages like "facebook.com/search" or "facebook.com/help"
-                        path = url.split('facebook.com/')[-1].rstrip('/')
-                        if path and path not in ['search', 'help', 'login', 'ads', 'business']:
-                            return url
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    f"{self.firecrawl_base_url}/search",
+                    headers=self._get_headers(),
+                    json={"query": query, "limit": 3},
+                )
+                response.raise_for_status()
+                data = response.json()
+                results = data.get("data", []) or []
+
+            for result in results:
+                url = result.get("url", "")
+                # Match official Facebook page URLs
+                if re.match(r'https?://(?:www\.)?facebook\.com/[^/\s]+/?$', url):
+                    # Skip generic pages like "facebook.com/search" or "facebook.com/help"
+                    path = url.split('facebook.com/')[-1].rstrip('/')
+                    if path and path not in ['search', 'help', 'login', 'ads', 'business']:
+                        return url
             return None
         except Exception as e:
             print(f"    [!] Error searching for Facebook page: {e}")
@@ -1318,4 +1327,3 @@ IMPORTANT:
             aesthetics = ["Modern", "Clean"]
         
         return aesthetics[:4]
-

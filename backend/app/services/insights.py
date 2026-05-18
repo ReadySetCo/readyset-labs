@@ -15,7 +15,7 @@ class InsightsGeneratorService:
     """Service for generating insights and Creative Dimensions from scraped data."""
     
     def __init__(self):
-        self.llm = get_llm_client()
+        self.llm = get_llm_client(task_type="strategy")
     
     async def generate(
         self,
@@ -52,21 +52,41 @@ class InsightsGeneratorService:
         )
         
         try:
+            # 300s timeout: the insights prompt is the largest one in the pipeline
+            # (full track1 + track2 data, ~20-30K input tokens) and gpt-5.4 strategy
+            # calls regularly take 40-90s. 120s was tight for Gemini and insufficient
+            # for gpt-5.4 — observed in benchmark session 139.
+            # max_tokens=16000: the insights response is a large JSON with
+            # icps, pain_points, messaging_angles, verbatim_quotes, objections,
+            # plus the 4 strategic-angle arrays. gpt-5.x reasoning tokens
+            # count against max_completion_tokens, so 8192 default was getting
+            # truncated and producing invalid JSON (None from complete_json).
             insights = await asyncio.wait_for(
                 self.llm.complete_json(
                     prompt=prompt,
                     system_prompt=INSIGHTS_SYSTEM,
-                    temperature=0.4
+                    temperature=0.4,
+                    max_tokens=16000,
                 ),
-                timeout=120.0  # 2 minute timeout for insights generation
+                timeout=300.0
             )
         except asyncio.TimeoutError:
-            print("    [!] Insights LLM timeout, using defaults")
+            print("    [!] Insights LLM timeout after 300s, using defaults")
             insights = {}
         except Exception as e:
-            print(f"    [!] Insights LLM error: {str(e)[:50]}")
+            import traceback
+            print(f"    [!] Insights LLM error: {type(e).__name__}: {e}")
+            print(f"    [!] Traceback:\n{traceback.format_exc()}")
             insights = {}
-        
+
+        # complete_json() returns None on JSON parse failure (e.g. gpt-5.4
+        # occasionally emits truncated markdown-wrapped JSON). Normalise to
+        # an empty dict so _validate_insights can populate defaults rather
+        # than crashing on `key not in None`.
+        if not isinstance(insights, dict):
+            print(f"    [!] Insights LLM returned non-dict ({type(insights).__name__}), using defaults")
+            insights = {}
+
         # Ensure all required fields exist
         insights = self._validate_insights(insights)
         

@@ -83,6 +83,10 @@ if FRONTEND_DIST.exists():
     @app.get("/{full_path:path}")
     async def serve_spa(full_path: str):
         """Serve the SPA frontend for any non-API route."""
+        # Never intercept API routes
+        if full_path.startswith("api/"):
+            from fastapi.responses import JSONResponse
+            return JSONResponse(status_code=404, content={"detail": "Not found"})
         # Check if specific file exists in dist
         file_path = FRONTEND_DIST / full_path
         if full_path and file_path.exists() and file_path.is_file():

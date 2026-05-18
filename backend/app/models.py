@@ -217,7 +217,8 @@ class Insight(Base):
     proto_icp_stats = Column(JSON, nullable=True)  # Summary stats
 
     # Creative Target Personas (CTP) - grouped by General Stance
-    ctp_data = Column(JSON, nullable=True)  # Full CTP structures list
+    ctp_data = Column(JSON, nullable=True)
+    target_personas = Column(JSON, nullable=True)  # April 2026 — prospects (not customers): Schwartz Unaware/Problem-Aware/Solution-Aware  # Full CTP structures list
     ctp_hypothesis = Column(JSON, nullable=True)  # Hypothesis layer per CTP
     ctp_stats = Column(JSON, nullable=True)  # Summary stats
 
@@ -229,6 +230,13 @@ class Insight(Base):
 
     # Post-Purchase Survey
     post_purchase_survey = Column(JSON, nullable=True)  # Survey questions for creative intelligence
+
+    # Strategic fields requested by LLM prompt but previously dropped by whitelist.
+    # Restored in P0.1 — source-quoted angles that power the Angle Bank (P2).
+    failed_solution_angles = Column(JSON, nullable=True)
+    transformation_angles = Column(JSON, nullable=True)
+    weak_signals = Column(JSON, nullable=True)
+    community_dialect = Column(JSON, nullable=True)
 
     # Full report
     full_report = Column(Text, nullable=True)

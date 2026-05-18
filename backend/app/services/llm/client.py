@@ -3,26 +3,58 @@ LLM Client - Unified interface for OpenAI and Gemini.
 """
 
 import json
+import os
+import threading
+from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List
 from openai import AsyncOpenAI
 import google.generativeai as genai
+import time
 
 from ...config import settings
+
+
+_telemetry_lock = threading.Lock()
+
+
+def _emit_telemetry(record: Dict[str, Any]) -> None:
+    """Append a telemetry record as JSONL when LLM_TELEMETRY_FILE env is set.
+
+    No-op when the env var is empty. Used by the benchmark harness to
+    reconstruct per-module latency / cost without changing runtime behavior.
+    """
+    target = os.environ.get("LLM_TELEMETRY_FILE")
+    if not target:
+        return
+    try:
+        with _telemetry_lock:
+            with open(target, "a", encoding="utf-8") as fh:
+                fh.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except Exception:
+        pass
 
 
 class LLMClient:
     """Unified LLM client supporting OpenAI and Gemini."""
     
-    def __init__(self, provider: Optional[str] = None):
-        self.provider = provider or settings.LLM_PROVIDER
+    def __init__(
+        self,
+        provider: Optional[str] = None,
+        model: Optional[str] = None,
+        task_type: Optional[str] = None
+    ):
+        self.task_type = task_type or "default"
+        self.model = model or _model_for_task(task_type)
+        self.provider = provider or _provider_for_model(self.model) or settings.LLM_PROVIDER
+        self.last_usage: Dict[str, Any] = {}
         
         if self.provider == "openai":
             self.openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-            self.model = settings.OPENAI_MODEL
+            self.model = self.model or settings.OPENAI_MODEL
         elif self.provider == "gemini":
             genai.configure(api_key=settings.GEMINI_API_KEY)
-            self.gemini_model = genai.GenerativeModel(settings.GEMINI_MODEL)
-            self.model = settings.GEMINI_MODEL
+            self.model = self.model or settings.GEMINI_MODEL
+            self.gemini_model = genai.GenerativeModel(self.model)
         else:
             raise ValueError(f"Unknown LLM provider: {self.provider}")
     
@@ -47,14 +79,39 @@ class LLMClient:
         Returns:
             The generated text response
         """
-        if self.provider == "openai":
-            return await self._openai_complete(
-                prompt, system_prompt, temperature, max_tokens, json_response
+        started_at = time.perf_counter()
+        success = True
+        result: Optional[str] = None
+        try:
+            if self.provider == "openai":
+                result = await self._openai_complete(
+                    prompt, system_prompt, temperature, max_tokens, json_response
+                )
+            else:
+                result = await self._gemini_complete(
+                    prompt, system_prompt, temperature, max_tokens, json_response
+                )
+            return result
+        except Exception:
+            success = False
+            raise
+        finally:
+            latency_ms = int((time.perf_counter() - started_at) * 1000)
+            usage = self.last_usage or {}
+            print(
+                f"       [LLM] task={self.task_type} provider={self.provider} model={self.model} "
+                f"latency_ms={latency_ms} tokens_in={usage.get('tokens_in')} tokens_out={usage.get('tokens_out')}"
             )
-        else:
-            return await self._gemini_complete(
-                prompt, system_prompt, temperature, max_tokens, json_response
-            )
+            _emit_telemetry({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "task_type": self.task_type,
+                "provider": self.provider,
+                "model": self.model,
+                "latency_ms": latency_ms,
+                "tokens_in": usage.get("tokens_in"),
+                "tokens_out": usage.get("tokens_out"),
+                "success": success,
+            })
     
     async def _openai_complete(
         self,
@@ -66,23 +123,46 @@ class LLMClient:
     ) -> str:
         """Generate completion using OpenAI."""
         messages = []
-        
+
         if system_prompt:
             messages.append({"role": "system", "content": system_prompt})
-        
+
         messages.append({"role": "user", "content": prompt})
-        
-        kwargs = {
+
+        kwargs: Dict[str, Any] = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "max_tokens": max_tokens
         }
-        
+
+        # gpt-5.x and o-series models require `max_completion_tokens` and
+        # reject the legacy `max_tokens` parameter with a 400.
+        if _uses_completion_tokens(self.model):
+            kwargs["max_completion_tokens"] = max_tokens
+        else:
+            kwargs["max_tokens"] = max_tokens
+
         if json_response:
             kwargs["response_format"] = {"type": "json_object"}
-        
-        response = await self.openai_client.chat.completions.create(**kwargs)
+
+        try:
+            response = await self.openai_client.chat.completions.create(**kwargs)
+        except Exception as err:
+            # Defensive fallback: if the API rejects `max_tokens` for an
+            # unknown future model, retry once with the new parameter name
+            # rather than burning the whole session.
+            err_msg = str(err)
+            if "max_tokens" in err_msg and "max_completion_tokens" in err_msg and "max_tokens" in kwargs:
+                kwargs["max_completion_tokens"] = kwargs.pop("max_tokens")
+                response = await self.openai_client.chat.completions.create(**kwargs)
+            else:
+                raise
+        usage = getattr(response, "usage", None)
+        self.last_usage = {
+            "tokens_in": getattr(usage, "prompt_tokens", None),
+            "tokens_out": getattr(usage, "completion_tokens", None),
+            "total_tokens": getattr(usage, "total_tokens", None),
+        }
         return response.choices[0].message.content
     
     async def _gemini_complete(
@@ -116,6 +196,7 @@ class LLMClient:
                     ),
                     request_options={"timeout": 60}
                 )
+                self.last_usage = {"tokens_in": None, "tokens_out": None, "total_tokens": None}
                 return response.text
             except Exception as e:
                 error_str = str(e).lower()
@@ -206,13 +287,68 @@ class LLMClient:
             return None
 
 
+def _model_for_task(task_type: Optional[str]) -> Optional[str]:
+    """Resolve task-specific model names while preserving legacy defaults."""
+    task = (task_type or "").lower()
+    if task in {"strategy", "insights", "ctp", "funnel", "angle_bank", "competitor"}:
+        return settings.LLM_MODEL_STRATEGY
+    if task in {"creative", "scripts", "hooks", "briefs", "ugc", "survey", "thumbnail", "ab_test"}:
+        return settings.LLM_MODEL_CREATIVE
+    if task in {"chat", "rag_chat"}:
+        return settings.LLM_MODEL_CHAT
+    if task in {"classifier", "classification", "stance", "snippet"}:
+        return settings.LLM_MODEL_CLASSIFIER
+    if task in {"vision", "ad_vision"}:
+        return settings.LLM_MODEL_VISION
+    return None
+
+
+def _provider_for_model(model: Optional[str]) -> Optional[str]:
+    """Infer provider from model name for task routing."""
+    if not model:
+        return None
+    normalized = model.lower()
+    if "gemini" in normalized:
+        return "gemini"
+    if normalized.startswith(("gpt-", "o1", "o3", "o4")):
+        return "openai"
+    return None
+
+
+def _uses_completion_tokens(model: Optional[str]) -> bool:
+    """Return True for OpenAI models that require `max_completion_tokens`.
+
+    gpt-5.x and the o-series (o1, o3, o4) reject the legacy `max_tokens`
+    parameter with a 400. Legacy gpt-4o / gpt-4-turbo / gpt-3.5 still use
+    `max_tokens`.
+    """
+    if not model:
+        return False
+    normalized = model.lower()
+    if normalized.startswith(("o1", "o3", "o4")):
+        return True
+    if normalized.startswith("gpt-5"):
+        return True
+    return False
+
+
 # Global LLM client instance
 llm_client = LLMClient()
+_client_cache: Dict[tuple, LLMClient] = {}
 
 
-def get_llm_client(provider: Optional[str] = None) -> LLMClient:
+def get_llm_client(
+    provider: Optional[str] = None,
+    task_type: Optional[str] = None,
+    model: Optional[str] = None
+) -> LLMClient:
     """Get LLM client instance."""
-    if provider and provider != settings.LLM_PROVIDER:
-        return LLMClient(provider=provider)
-    return llm_client
+    if not provider and not task_type and not model:
+        return llm_client
 
+    resolved_model = model or _model_for_task(task_type)
+    resolved_provider = provider or _provider_for_model(resolved_model) or settings.LLM_PROVIDER
+    key = (resolved_provider, resolved_model, task_type or "default")
+    if key not in _client_cache:
+        _client_cache[key] = LLMClient(provider=resolved_provider, model=resolved_model, task_type=task_type)
+    return _client_cache[key]

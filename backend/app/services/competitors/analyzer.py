@@ -15,7 +15,7 @@ class CompetitorAnalyzer:
     def __init__(self):
         self.api_key = settings.FIRECRAWL_API_KEY
         self.base_url = settings.FIRECRAWL_BASE_URL
-        self.llm = get_llm_client()
+        self.llm = get_llm_client(task_type="strategy")
         self.timeout = 60.0
     
     def _get_headers(self) -> Dict[str, str]:

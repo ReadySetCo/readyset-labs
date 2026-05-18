@@ -15,7 +15,7 @@ class BrandDiscoveryService:
     """Service for discovering brand information."""
     
     def __init__(self):
-        self.llm = get_llm_client()
+        self.llm = get_llm_client(task_type="strategy")
         self.firecrawl = FirecrawlScraper()
     
     async def discover(
@@ -114,4 +114,3 @@ class BrandDiscoveryService:
             "description": search_result.get("description", ""),
             "search_results": search_result.get("results", [])
         }
-

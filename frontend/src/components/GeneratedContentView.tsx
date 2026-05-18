@@ -17,10 +17,47 @@ import {
 } from 'lucide-react';
 import type { Insight } from '../api/client';
 
+function toStringArray(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map(String).filter(Boolean);
+  if (typeof value === 'string' && value.trim()) return [value.trim()];
+  return [];
+}
+
+function normalizeScript(script: any) {
+  return {
+    ...script,
+    based_on_verbatims: toStringArray(script?.based_on_verbatims ?? script?.verbatims_used),
+  };
+}
+
+function normalizeThumbnail(thumb: any) {
+  const visualElements = toStringArray(thumb?.visual_elements);
+  return {
+    ...thumb,
+    thumbnail_type: thumb?.thumbnail_type ?? thumb?.visual_style ?? thumb?.first_frame_element,
+    visual_description: thumb?.visual_description ?? thumb?.description ?? visualElements.join(', '),
+    emotion_evoked: thumb?.emotion_evoked ?? thumb?.emotion_target ?? thumb?.target_emotion,
+    why_it_works: thumb?.why_it_works ?? thumb?.why_effective,
+    platform_fit: toStringArray(thumb?.platform_fit ?? thumb?.platforms),
+  };
+}
+
+function normalizeABTest(test: any) {
+  const expectedImpact = typeof test?.expected_impact === 'string' ? test.expected_impact.toLowerCase() : undefined;
+  return {
+    ...test,
+    priority: test?.priority ?? expectedImpact ?? 'medium',
+    test_type: test?.test_type ?? test?.element_being_tested,
+    control: test?.control ?? test?.variant_a,
+    variant: test?.variant ?? test?.variant_b,
+    rationale: test?.rationale ?? test?.data_supporting_test,
+  };
+}
+
 export default function GeneratedContentView({ insights, sessionId }: { insights: Insight; sessionId: number }) {
-  const scripts = (insights as any).generated_scripts || [];
-  const thumbnails = (insights as any).thumbnail_suggestions || [];
-  const abTests = (insights as any).ab_test_suggestions || [];
+  const scripts = ((insights as any).generated_scripts || []).map(normalizeScript);
+  const thumbnails = ((insights as any).thumbnail_suggestions || []).map(normalizeThumbnail);
+  const abTests = ((insights as any).ab_test_suggestions || []).map(normalizeABTest);
   const ugcBriefs = (insights as any).ugc_briefs || [];
   const survey = (insights as any).post_purchase_survey || {};
   const verbatimQuotes = (insights as any).verbatim_quotes || [];
@@ -37,7 +74,7 @@ export default function GeneratedContentView({ insights, sessionId }: { insights
       });
       if (response.ok) {
         const data = await response.json();
-        setLocalScripts([...localScripts, ...(data.new_scripts || [])]);
+        setLocalScripts([...localScripts, ...((data.new_scripts || []).map(normalizeScript))]);
       }
     } catch (error) {
       console.error('Failed to generate scripts:', error);

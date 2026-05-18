@@ -12,7 +12,7 @@ class ABTestSuggester:
     """Generates A/B test suggestions with simple, reliable prompts."""
     
     def __init__(self):
-        self.llm = get_llm_client()
+        self.llm = get_llm_client(task_type="creative")
     
     async def suggest_tests(
         self,
@@ -95,8 +95,10 @@ Return JSON array:
     {{
         "test_name": "Short descriptive name",
         "hypothesis": "If we [change X] then [metric] will improve because [reason based on data above]",
-        "variant_a": "Control version - describe specifically",
-        "variant_b": "Test version - describe specifically", 
+        "control": "Control version - describe specifically",
+        "variant": "Test version - describe specifically",
+        "test_type": "Hook/Framework/CTA/Emotion/Objection/etc",
+        "priority": "high|medium|low",
         "element_being_tested": "Hook/Framework/CTA/Emotion/Objection/etc",
         "metric_to_track": "Hook Rate/CTR/CVR/Watch Time/etc",
         "expected_impact": "High/Medium/Low",
@@ -108,25 +110,43 @@ Return JSON array:
         try:
             result = await asyncio.wait_for(
                 self.llm.complete_json(prompt=prompt, temperature=0.7),
-                timeout=30.0  # 30s timeout for A/B tests
+                timeout=60.0  # 60s margin for gpt-5.4 (creative calls observed 22-25s in session 139)
             )
             
             if result and isinstance(result, list):
                 print(f"       -> Generated {len(result)} A/B test ideas")
-                return result[:num_tests]
+                return [self._normalize_test(item) for item in result[:num_tests]]
             elif result and isinstance(result, dict):
                 for key in ["tests", "ab_tests", "suggestions"]:
                     if key in result and isinstance(result[key], list):
-                        return result[key][:num_tests]
+                        return [self._normalize_test(item) for item in result[key][:num_tests]]
         
         except asyncio.TimeoutError:
             print(f"       [!] A/B test generation timeout")
         except Exception as e:
-            print(f"       [!] A/B test generation failed: {e}")
+            import traceback
+            print(f"       [!] A/B test generation failed: {type(e).__name__}: {e}")
+            print(f"       [!] Traceback:\n{traceback.format_exc()}")
         
         # Fallback tests
         print(f"       -> Using fallback A/B tests")
         return self._generate_fallbacks(num_tests)
+
+    def _normalize_test(self, item: Dict[str, Any]) -> Dict[str, Any]:
+        """Keep new sessions canonical even if the LLM returns legacy variant names."""
+        if not isinstance(item, dict):
+            return {}
+        expected_impact = item.get("expected_impact")
+        priority = item.get("priority")
+        if not priority and isinstance(expected_impact, str):
+            priority = expected_impact.lower()
+        return {
+            **item,
+            "control": item.get("control") or item.get("variant_a"),
+            "variant": item.get("variant") or item.get("variant_b"),
+            "test_type": item.get("test_type") or item.get("element_being_tested"),
+            "priority": priority or "medium",
+        }
     
     def _generate_fallbacks(self, num: int) -> List[Dict[str, Any]]:
         """Generate fallback test suggestions."""
@@ -134,8 +154,10 @@ Return JSON array:
             {
                 "test_name": "Hook Style Test",
                 "hypothesis": "Question hooks perform better than statement hooks",
-                "variant_a": "Statement hook opening",
-                "variant_b": "Question hook opening",
+                "control": "Statement hook opening",
+                "variant": "Question hook opening",
+                "test_type": "Hook",
+                "priority": "high",
                 "metric_to_track": "Hook rate (3s views / impressions)",
                 "expected_impact": "High",
                 "implementation_effort": "Low"
@@ -143,8 +165,10 @@ Return JSON array:
             {
                 "test_name": "CTA Urgency Test",
                 "hypothesis": "Adding urgency to CTA increases conversions",
-                "variant_a": "Standard CTA: 'Shop now'",
-                "variant_b": "Urgent CTA: 'Limited time - shop now'",
+                "control": "Standard CTA: 'Shop now'",
+                "variant": "Urgent CTA: 'Limited time - shop now'",
+                "test_type": "CTA",
+                "priority": "medium",
                 "metric_to_track": "CTR",
                 "expected_impact": "Medium",
                 "implementation_effort": "Low"
@@ -152,8 +176,10 @@ Return JSON array:
             {
                 "test_name": "Social Proof Test",
                 "hypothesis": "Adding customer quote increases trust",
-                "variant_a": "No social proof",
-                "variant_b": "Customer testimonial quote overlay",
+                "control": "No social proof",
+                "variant": "Customer testimonial quote overlay",
+                "test_type": "Social Proof",
+                "priority": "medium",
                 "metric_to_track": "CVR",
                 "expected_impact": "Medium",
                 "implementation_effort": "Medium"

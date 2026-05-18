@@ -34,11 +34,12 @@ import AdIntelligenceView from '../components/AdIntelligenceView';
 import GeneratedContentView from '../components/GeneratedContentView';
 import FunnelStrategyView from '../components/FunnelStrategyView';
 import CTPView from '../components/CTPView';
+import TargetPersonasView from '../components/TargetPersonasView';
 import SocialMediaView from '../components/SocialMediaView';
 import DataView from '../components/DataView';
 import SentimentView from '../components/SentimentView';
 
-type Tab = 'dna' | 'insights' | 'ads' | 'generated' | 'strategy' | 'ctps' | 'social' | 'trends' | 'hooks' | 'sentiment' | 'data' | 'report';
+type Tab = 'dna' | 'insights' | 'ads' | 'generated' | 'strategy' | 'ctps' | 'targets' | 'social' | 'trends' | 'hooks' | 'sentiment' | 'data' | 'report';
 
 
 export default function Results() {
@@ -46,7 +47,7 @@ export default function Results() {
   const [activeTab, setActiveTab] = useState<Tab>('dna');
   const [exportFormat, setExportFormat] = useState('full');
 
-  const { data: result, isLoading, error } = useQuery({
+  const { data: result, isLoading, error, refetch } = useQuery({
     queryKey: ['result', sessionId],
     queryFn: () => getFullResearchResult(Number(sessionId)),
   });
@@ -99,6 +100,7 @@ export default function Results() {
             <option value="raw_reviews">Raw Reviews</option>
             <option value="ctp">CTP Personas</option>
             <option value="hypothesis">Hypothesis Layer</option>
+            <option value="rsw_database">RSW Database (Excel)</option>
           </select>
           <button
             onClick={() => {
@@ -108,6 +110,7 @@ export default function Results() {
                 raw_reviews: `${safeName}-raw-reviews.md`,
                 ctp: `${safeName}-ctp-personas.md`,
                 hypothesis: `${safeName}-hypothesis-layer.md`,
+                rsw_database: `${safeName}-rsw-database.xlsx`,
               };
               const link = document.createElement('a');
               link.href = `/api/research/session/${sessionId}/export?format=${exportFormat}`;
@@ -189,6 +192,13 @@ export default function Results() {
             Creative Target Personas
           </TabButton>
           <TabButton
+            active={activeTab === 'targets'}
+            onClick={() => setActiveTab('targets')}
+            icon={<Users className="w-4 h-4" />}
+          >
+            Target Personas (TOFU)
+          </TabButton>
+          <TabButton
             active={activeTab === 'strategy'}
             onClick={() => setActiveTab('strategy')}
             icon={<Layers className="w-4 h-4" />}
@@ -262,6 +272,14 @@ export default function Results() {
           ctps={(insights as any).ctp_data || []}
           hypothesis={(insights as any).ctp_hypothesis || []}
           stats={(insights as any).ctp_stats || {}}
+          sessionId={Number(sessionId)}
+          onRegenerated={() => refetch()}
+        />
+      )}
+
+      {activeTab === 'targets' && insights && (
+        <TargetPersonasView
+          targetPersonas={(insights as any).target_personas || []}
         />
       )}
 
@@ -342,7 +360,7 @@ export default function Results() {
       )}
 
       {/* AI Chat Assistant */}
-      <ChatPanel sessionId={Number(sessionId)} />
+      <ChatPanel sessionId={Number(sessionId)} brandId={brand.id} />
     </div>
   );
 }

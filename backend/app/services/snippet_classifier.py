@@ -65,7 +65,7 @@ class SnippetClassifier:
     def __init__(self):
         # Use Gemini specifically because it properly returns JSON arrays for batch prompts
         # OpenAI tends to return single objects even when asked for arrays
-        self.llm = get_llm_client(provider="gemini")
+        self.llm = get_llm_client(task_type="classifier")
     
     async def classify_snippet(
         self, 

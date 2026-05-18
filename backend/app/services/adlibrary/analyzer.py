@@ -26,9 +26,38 @@ class AdAnalyzer:
         self.api_key = settings.GEMINI_API_KEY
         if self.api_key:
             genai.configure(api_key=self.api_key)
-        self.model_id = "models/gemini-3-flash-preview"
+        self.model_id = settings.LLM_MODEL_VISION
+        self.fallback_model_id = settings.LLM_MODEL_VISION_FALLBACK
+        self._last_model_used = self.model_id
         # Base directory for resolving relative paths
         self.base_dir = Path(__file__).parent.parent.parent.parent  # backend/
+
+    async def _generate_with_fallback(self, contents: Any, timeout_seconds: float):
+        """Run Gemini Vision with a configurable fallback model."""
+        model_ids = [self.model_id]
+        if self.fallback_model_id and self.fallback_model_id not in model_ids:
+            model_ids.append(self.fallback_model_id)
+
+        for index, model_id in enumerate(model_ids):
+            try:
+                started_at = time.perf_counter()
+                model = genai.GenerativeModel(model_id)
+                response = await asyncio.wait_for(
+                    asyncio.to_thread(model.generate_content, contents),
+                    timeout=timeout_seconds
+                )
+                self._last_model_used = model_id
+                elapsed = time.perf_counter() - started_at
+                if index > 0:
+                    print(f"       -> Gemini Vision fallback succeeded with {model_id} in {elapsed:.1f}s")
+                return response
+            except Exception as e:
+                if index == len(model_ids) - 1:
+                    raise
+                print(
+                    f"    [!] Gemini Vision model {model_id} failed "
+                    f"({type(e).__name__}: {str(e)[:80]}), retrying with {model_ids[index + 1]}"
+                )
     
     def _resolve_media_path(self, media_path: str) -> str:
         """Resolve media path to absolute path."""
@@ -284,14 +313,10 @@ Analyze THIS video independently. Base selections on what you SEE and HEAR, not 
             # Analyze with Gemini (with timeout)
             print(f"       -> Analyzing with Gemini Vision...")
             analysis_start = datetime.now()
-            model = genai.GenerativeModel(self.model_id)
             prompt = self._build_analysis_prompt()
             
             try:
-                response = await asyncio.wait_for(
-                    asyncio.to_thread(model.generate_content, [prompt, video_file]),
-                    timeout=90.0  # 90 seconds for video analysis
-                )
+                response = await self._generate_with_fallback([prompt, video_file], timeout_seconds=90.0)
             except asyncio.TimeoutError:
                 print(f"    [!] Gemini timeout after 90s for video analysis")
                 return None
@@ -307,6 +332,7 @@ Analyze THIS video independently. Base selections on what you SEE and HEAR, not 
                 result["duration_seconds"] = duration
                 result["media_type"] = "video"
                 result["analysis_source"] = "gemini"
+                result["analysis_model"] = self._last_model_used
             
             # Clean up uploaded file
             try:
@@ -458,14 +484,9 @@ Analyze THIS video independently. Base selections on what you SEE and HEAR, not 
 
 Return ONLY the JSON object, no markdown or explanation."""
 
-            model = genai.GenerativeModel(self.model_id)
-            
             # Add timeout to prevent hanging
             try:
-                response = await asyncio.wait_for(
-                    asyncio.to_thread(model.generate_content, [prompt, image_file]),
-                    timeout=75.0
-                )
+                response = await self._generate_with_fallback([prompt, image_file], timeout_seconds=75.0)
             except asyncio.TimeoutError:
                 print(f"    [!] Gemini timeout after 75s for image analysis")
                 return None
@@ -477,6 +498,7 @@ Return ONLY the JSON object, no markdown or explanation."""
                 result = self._normalize_analysis_response(result)
                 result["media_type"] = "image"
                 result["analysis_source"] = "gemini"
+                result["analysis_model"] = self._last_model_used
             
             # Clean up
             try:
@@ -642,12 +664,7 @@ SCENE BREAKDOWN (treat as a single static frame):
 
 Return ONLY the JSON object. No markdown, no explanation."""
 
-            model = genai.GenerativeModel(self.model_id)
-            
-            response = await asyncio.wait_for(
-                asyncio.to_thread(model.generate_content, prompt),
-                timeout=30.0
-            )
+            response = await self._generate_with_fallback(prompt, timeout_seconds=30.0)
             
             result = self._extract_json(response.text)
             
@@ -656,6 +673,7 @@ Return ONLY the JSON object. No markdown, no explanation."""
                 result = self._normalize_analysis_response(result)
                 result["media_type"] = "text_only"
                 result["analysis_source"] = "gemini_text"
+                result["analysis_model"] = self._last_model_used
                 
             return result
             
@@ -869,7 +887,6 @@ Return ONLY the JSON object. No markdown, no explanation."""
                 reverse=True
             )[:5]
         }
-
 
 
 

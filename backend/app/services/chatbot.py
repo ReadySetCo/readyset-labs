@@ -58,13 +58,15 @@ class ChatbotService:
         self.session_id = session_id
         # Use dedicated chat model (large context, stable)
         from ..config import settings
-        self.llm = get_llm_client(provider="gemini")
-        # Override model for chat to use the chat-specific model
-        if hasattr(settings, 'GEMINI_CHAT_MODEL') and settings.GEMINI_CHAT_MODEL:
+        self.llm = get_llm_client(task_type="chat")
+        # Legacy Gemini-only override; task routing can point chat to OpenAI.
+        if self.llm.provider == "gemini" and hasattr(settings, 'GEMINI_CHAT_MODEL') and settings.GEMINI_CHAT_MODEL:
             import google.generativeai as genai
             self.llm.gemini_model = genai.GenerativeModel(settings.GEMINI_CHAT_MODEL)
             self.llm.model = settings.GEMINI_CHAT_MODEL
             logger.info(f"[Chat] Using chat model: {settings.GEMINI_CHAT_MODEL}")
+        else:
+            logger.info(f"[Chat] Using chat model: {self.llm.model}")
         self.conversation_history: List[Dict[str, str]] = []
         self.current_pack: Optional[ResearchPack] = None
         self._context_cache: Dict[int, str] = {}  # session_id -> context string

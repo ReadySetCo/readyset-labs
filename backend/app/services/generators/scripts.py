@@ -289,8 +289,7 @@ class ScriptGenerator:
     """Generates professional ad scripts using Gemini with rich context."""
     
     def __init__(self):
-        # Use Gemini specifically for scripts (handles long prompts better)
-        self.llm = get_llm_client(provider="gemini")
+        self.llm = get_llm_client(task_type="creative")
     
     async def generate_scripts(
         self,
@@ -654,9 +653,54 @@ class ScriptGenerator:
         # === HOOKS LIBRARY (structured hooks from creative briefs) ===
         hooks_library = insights.get('hooks_library', {})
         library_hooks = []
-        if hooks_library:
-            # Get hooks by category
-            for category_key in ['attention_grabbers', 'pain_point_hooks', 'curiosity_hooks', 'social_proof_hooks']:
+        if isinstance(hooks_library, dict) and not hooks_library.get("status"):
+            raw_hooks = []
+            if isinstance(hooks_library.get("all_hooks"), list):
+                raw_hooks.extend(hooks_library.get("all_hooks", []))
+
+            for bucket_key in ("by_type", "by_emotion"):
+                bucket = hooks_library.get(bucket_key, {})
+                if isinstance(bucket, dict):
+                    for bucket_hooks in bucket.values():
+                        if isinstance(bucket_hooks, list):
+                            raw_hooks.extend(bucket_hooks[:3])
+
+            seen_hooks = set()
+            normalized_hooks = []
+            for h in raw_hooks:
+                if isinstance(h, dict):
+                    hook_text = str(h.get("hook_text") or h.get("hook") or h.get("text") or "")[:160]
+                    if not hook_text or hook_text in seen_hooks:
+                        continue
+                    seen_hooks.add(hook_text)
+                    normalized_hooks.append({
+                        "text": hook_text,
+                        "type": h.get("hook_type") or h.get("type") or "",
+                        "emotion": h.get("target_emotion") or h.get("emotion") or "",
+                        "awareness": h.get("awareness_level") or "",
+                        "format": h.get("recommended_format") or "",
+                        "source": h.get("verbatim_source") or "",
+                        "strength": h.get("strength_score") or 3,
+                    })
+                elif isinstance(h, str) and h not in seen_hooks:
+                    seen_hooks.add(h)
+                    normalized_hooks.append({"text": h[:160], "type": "", "emotion": "", "awareness": "", "format": "", "source": "", "strength": 3})
+
+            normalized_hooks.sort(key=lambda item: item.get("strength") or 0, reverse=True)
+            for h in normalized_hooks[:10]:
+                hook_str = f"- \"{h['text']}\""
+                tags = [str(value) for value in [h.get("type"), h.get("emotion"), h.get("awareness"), h.get("format")] if value]
+                if tags:
+                    hook_str += f" [{', '.join(tags)}]"
+                if h.get("source"):
+                    hook_str += f"\n  Source quote: \"{str(h['source'])[:120]}\""
+                library_hooks.append(hook_str)
+
+            if library_hooks:
+                hooks_library = {}
+        if False and hooks_library:
+            # Retired legacy hook categories kept unreachable for backwards diff context.
+            for category_key in []:
                 category_hooks = hooks_library.get(category_key, [])[:2]
                 for h in category_hooks:
                     if isinstance(h, dict):
@@ -666,6 +710,9 @@ class ScriptGenerator:
                     elif isinstance(h, str):
                         library_hooks.append(f"• {h[:120]}")
         
+        if not library_hooks:
+            library_hooks = hook_suggestions[:6] or angle_list[:6]
+
         return {
             'brand_name': brand_name,
             'sector': sector,
@@ -833,7 +880,7 @@ Return this exact JSON structure:
     ],
     "cta": "Specific call to action — on-screen AND spoken, matched to CTA temperature",
     "why_it_works": "Data-backed explanation referencing: the psychological trigger used, specific pain points, customer language incorporated, and how the Trigger Escalation resolves",
-    "verbatims_used": ["Exact quote 1 you incorporated", "Exact quote 2", "Exact quote 3"],
+    "based_on_verbatims": ["Exact quote 1 you incorporated", "Exact quote 2", "Exact quote 3"],
     "customer_language_used": ["Exact phrase 1 from customer language", "Phrase 2"],
     "desire_addressed": "Which customer desire this script fulfills",
     "objection_addressed": "The specific objection and how the script handles it",
@@ -851,6 +898,8 @@ Return this exact JSON structure:
             
             if result and isinstance(result, dict):
                 result['script_num'] = script_num
+                if not result.get('based_on_verbatims') and result.get('verbatims_used'):
+                    result['based_on_verbatims'] = result.get('verbatims_used')
                 
                 # Ensure full_script exists
                 if not result.get('full_script') or len(result.get('full_script', '')) < 100:
@@ -970,7 +1019,7 @@ Return this exact JSON structure:
             ],
             "cta": f"Click the link and try {brand_name}. You'll thank me later.",
             "why_it_works": "Problem-solution framework using Trigger Escalation: Zeigarnik opens the loop, Loss Aversion surfaces the cost of inaction, Zero-Risk Bias resolves via product, Scarcity closes with urgency.",
-            "verbatims_used": [],
+            "based_on_verbatims": [],
             "customer_language_used": [],
             "desire_addressed": "",
             "objection_addressed": "",

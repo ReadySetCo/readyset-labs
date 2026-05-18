@@ -399,9 +399,57 @@ def build_export(brand: Any, insight: Any, scraped_data: list = None) -> str:
     ins = insight
     raw_data = scraped_data or []
 
+    # ── Build sector/vertical context for system prompt ────────────────
+    sector_hint = b.sector or b.vertical or "its market"
+
     md = f"""# {b.name} — Brand Intelligence Report
 
 *Exported: {datetime.now().strftime('%Y-%m-%d %H:%M')}*
+
+---
+
+## System Instructions
+
+You are a senior creative strategist specialized in {sector_hint}. You have access to a complete brand intelligence report for **{b.name}** ({b.website_url or 'N/A'}) — built from real customer data, ad library analysis, competitor intelligence, and audience research.
+
+### How to use this data
+
+- **Always ground your answers in the data below.** Cite sources when possible: [reddit], [trustpilot], [tiktok], [app_store], [ad_library], [competitor_ads], etc.
+- **Use exact customer quotes** when they strengthen the argument. This report contains real verbatims — use them.
+- **Reference CTPs by name** (e.g. "Burned and Double-Checking Everything") when discussing audience segments.
+- **Reference Target Personas by name** when discussing TOFU / acquisition strategies.
+- **Cross-reference sections.** The best insights come from connecting ads (Section 17c) with customer pain points (Section 19b), or competitor gaps (Section 17d) with our weak signals (Section 25).
+
+### What you CAN do beyond this report
+
+- **Search the internet** for updated information: competitor launches, new ads, recent reviews, trending content, pricing changes, market news. This report is a snapshot — the market moves.
+- **Visit the brand's website** ({b.website_url or 'N/A'}) and competitors' sites to check current offers, landing pages, pricing, and messaging.
+- **Check the Meta Ad Library** for the latest active ads from {b.name} and its competitors.
+- **Look up recent TikTok/Instagram content** in the brand's niche for trending formats, sounds, and hooks.
+- **Cross-reference with industry benchmarks** (CPM, CTR, CPA ranges) when asked about media buying or performance.
+
+### What you should NOT do
+
+- Do not invent data, quotes, or statistics that aren't in this report or verifiable online.
+- Do not present hypotheses as facts. When something is your inference, flag it.
+- Do not ignore the CTPs and default to generic "millennials who care about X" personas. The CTPs below are built from real data — use them.
+
+### Report structure quick reference
+
+| Section | What's in it |
+|---------|-------------|
+| 1-2 | Brand DNA, summary, sentiment |
+| 3-6 | ICPs, perception, market research, purchase psychology |
+| 7 | Competitive intelligence (SWOT, matrix, profiles) |
+| 8-10 | Messaging angles, hooks library, recommended hooks |
+| 11-16 | Pain points, tone, quotes, cross-source insights, content ops |
+| 17 | TikTok trends |
+| 17b-17f | **Ad intelligence**: creative patterns, per-ad analysis, competitor ads, data by topic |
+| 18-19 | Data summary, Proto-ICPs |
+| 19b-19f | **CTPs, hypothesis layer, target personas, community dialect** |
+| 20-21 | Raw verbatims by source, sentiment distribution |
+| 22-25 | Angle bank, failed solutions, transformation angles, weak signals |
+| 26-30 | UGC briefs, funnel strategy, survey, A/B tests, thumbnails |
 
 ---
 
@@ -719,6 +767,300 @@ These quotes come from segment research and social trends — they reflect the b
 """
         md += fmt_tiktok_trends(ins.tiktok_trends)
 
+    # ── Section 17b: Ad Creative Patterns (aggregated) ─────────────────────
+
+    acp = getattr(ins, 'ad_creative_patterns', None)
+    if acp and isinstance(acp, dict):
+        md += """
+---
+
+## 17b. Ad Creative Patterns (Aggregated)
+
+*How the brand's ads perform across frameworks, hooks, tones, emotions, and CTAs.*
+
+"""
+        total = acp.get("total_analyzed", 0)
+        md += f"**Ads Analyzed**: {total}\n"
+        avg_hook = acp.get("avg_hook_strength")
+        if avg_hook:
+            md += f"**Avg Hook Strength**: {avg_hook:.1f}/5\n"
+        avg_eff = acp.get("avg_effectiveness")
+        if avg_eff:
+            md += f"**Avg Effectiveness**: {avg_eff:.1f}/5\n"
+        md += "\n"
+
+        for section, label in [
+            ("frameworks", "Framework Distribution"),
+            ("hook_types", "Hook Type Distribution"),
+            ("tones", "Tone Distribution"),
+            ("emotions", "Emotion Distribution"),
+            ("offer_types", "Offer Types"),
+            ("proof_types", "Proof Types"),
+            ("cta_placements", "CTA Placements"),
+        ]:
+            data = acp.get(section, {})
+            if data and isinstance(data, dict):
+                md += f"**{label}:**\n"
+                sorted_items = sorted(data.items(), key=lambda x: x[1] if isinstance(x[1], (int, float)) else 0, reverse=True)
+                for k, v in sorted_items[:10]:
+                    md += f"- {k}: {v}\n"
+                md += "\n"
+
+        top_trans = acp.get("top_transcriptions", [])
+        if top_trans and isinstance(top_trans, list):
+            md += "### Top Ad Transcriptions\n\n"
+            for i, t in enumerate(top_trans, 1):
+                if isinstance(t, dict):
+                    text = t.get("transcription", t.get("text", str(t)))
+                    hook = t.get("hook", "")
+                    strength = t.get("hook_strength", "")
+                    md += f"**Ad {i}**"
+                    if strength:
+                        md += f" (hook strength: {strength}/5)"
+                    md += f":\n"
+                    if hook:
+                        md += f"> Hook: \"{hook}\"\n\n"
+                    md += f"> \"{text[:500]}\"\n\n"
+                elif isinstance(t, str):
+                    md += f"**Ad {i}**: \"{t[:500]}\"\n\n"
+
+        ad_examples = acp.get("ad_examples", {})
+        if ad_examples and isinstance(ad_examples, dict):
+            md += "### Ad Examples by Category\n\n"
+            for cat, examples in ad_examples.items():
+                md += f"**{cat.replace('_', ' ').title()}:**\n"
+                if isinstance(examples, list):
+                    for ex in examples[:3]:
+                        if isinstance(ex, dict):
+                            md += f"- {ex.get('hook', ex.get('text', str(ex)))}\n"
+                        else:
+                            md += f"- {ex}\n"
+                elif isinstance(examples, str):
+                    md += f"- {examples}\n"
+                md += "\n"
+
+    # ── Section 17c: Per-Ad Creative Analysis ────────────────────────────
+
+    ad_library = getattr(ins, 'ad_library_data', None)
+    if ad_library:
+        ads_list = []
+        if isinstance(ad_library, dict):
+            ads_list = ad_library.get("ads", [])
+        elif isinstance(ad_library, list):
+            ads_list = ad_library
+
+        analyzed_ads = [a for a in ads_list if isinstance(a, dict) and a.get("creative_analysis")]
+        if analyzed_ads:
+            md += f"""
+---
+
+## 17c. Per-Ad Creative Analysis ({len(analyzed_ads)} ads)
+
+*Individual ad breakdowns with transcription, hook, framework, tone, emotion, and effectiveness.*
+
+"""
+            for i, ad in enumerate(analyzed_ads, 1):
+                ca = ad.get("creative_analysis", {})
+                display_fmt = ad.get("display_format", "")
+                ad_copy = ad.get("ad_copy", "")
+                status = ad.get("status", "")
+
+                md += f"### Ad {i}: {display_fmt}"
+                if status:
+                    md += f" ({status})"
+                md += "\n\n"
+
+                if ad_copy:
+                    md += f"**Ad Copy**: \"{ad_copy[:300]}\"\n\n"
+
+                # Key creative analysis fields — deduplicate labels
+                _seen_labels = set()
+                for field, label in [
+                    ("transcription", "Transcription"),
+                    ("hook_text", "Hook"),
+                    ("hook_type", "Hook Type"),
+                    ("hook_strength", "Hook Strength"),
+                    ("hook_strength_1to5", "Hook Strength"),
+                    ("framework", "Framework"),
+                    ("creative_format", "Creative Format"),
+                    ("messaging_angle", "Messaging Angle"),
+                    ("messaging_angle_text", "Messaging Angle"),
+                    ("tone", "Tone"),
+                    ("emotion", "Emotion"),
+                    ("target_persona", "Target Persona"),
+                    ("target_audience_inferred", "Target Audience"),
+                    ("pain_point_addressed", "Pain Point Addressed"),
+                    ("pain_points_text", "Pain Points"),
+                    ("value_prop_highlighted", "Value Prop"),
+                    ("value_props_text", "Value Props"),
+                    ("cta_text", "CTA"),
+                    ("cta_all", "CTA"),
+                    ("cta_placement", "CTA Placement"),
+                    ("offer_type", "Offer"),
+                    ("urgency_element", "Urgency"),
+                    ("proof_type", "Proof Type"),
+                    ("visual_type", "Visual Type"),
+                    ("talent_type", "Talent"),
+                    ("funnel_stage", "Funnel Stage"),
+                    ("effectiveness_score", "Effectiveness"),
+                    ("effectiveness_score_1to5", "Effectiveness"),
+                    ("effectiveness", "Effectiveness"),
+                    ("angle_label", "Angle Label"),
+                    ("psychological_triggers", "Psychological Triggers"),
+                    ("emotional_triggers", "Emotional Triggers"),
+                    ("alternative_hooks", "Alternative Hooks"),
+                ]:
+                    val = ca.get(field)
+                    if not val or label in _seen_labels:
+                        continue
+                    _seen_labels.add(label)
+                    if isinstance(val, list):
+                        md += f"- **{label}**: {', '.join(str(v) for v in val)}\n"
+                    elif field == "transcription" and len(str(val)) > 20:
+                        md += f"- **{label}**: \"{str(val)[:600]}\"\n"
+                    elif "strength" in field or "effectiveness" in field or "1to5" in field:
+                        md += f"- **{label}**: {val}/5\n"
+                    else:
+                        md += f"- **{label}**: {val}\n"
+
+                # High-fidelity visual description (IMAGE + VIDEO)
+                hfd = ca.get("high_fidelity_description", "")
+                if hfd:
+                    md += f"- **Visual Description**: {hfd}\n"
+
+                # Strategic summary
+                strat = ca.get("strategic_summary", "")
+                if strat:
+                    md += f"- **Strategic Summary**: {strat}\n"
+
+                # Ad summary
+                ad_sum = ca.get("ad_summary", "")
+                if ad_sum:
+                    md += f"- **Ad Summary**: {ad_sum}\n"
+
+                # Scene breakdown (for video)
+                scenes = ca.get("scene_breakdown", [])
+                if scenes and isinstance(scenes, list) and len(scenes) > 1:
+                    md += "- **Scene Breakdown**:\n"
+                    for scene in scenes:
+                        if isinstance(scene, dict):
+                            ts = scene.get("timestamp_start", "")
+                            te = scene.get("timestamp_end", "")
+                            stype = scene.get("scene_type", "")
+                            vdesc = scene.get("visual_description", "")
+                            ts_str = f"[{ts}-{te}] " if ts else ""
+                            type_str = f"**{stype}**: " if stype else ""
+                            md += f"  - {ts_str}{type_str}{vdesc[:200]}\n"
+
+                md += "\n"
+
+    # ── Section 17d: Competitor Ads Analysis ─────────────────────────────
+
+    comp_ads = getattr(ins, 'competitor_ads_data', None)
+    if comp_ads and isinstance(comp_ads, list):
+        md += """
+---
+
+## 17d. Competitor Ads Analysis
+
+*Creative analysis of competitor advertising — frameworks, hooks, angles they use.*
+
+"""
+        for comp_entry in comp_ads:
+            if not isinstance(comp_entry, dict):
+                continue
+            comp_name = comp_entry.get("competitor_name", "Unknown")
+            comp_ad_list = comp_entry.get("ads", [])
+            analyzed_comp = [a for a in comp_ad_list if isinstance(a, dict) and a.get("creative_analysis")]
+
+            md += f"### {comp_name} ({len(analyzed_comp)} ads analyzed)\n\n"
+
+            for j, ad in enumerate(analyzed_comp[:10], 1):
+                ca = ad.get("creative_analysis", {})
+                ad_copy = ad.get("ad_copy", "")
+                display_fmt = ad.get("display_format", "")
+
+                md += f"**Ad {j}** ({display_fmt})"
+                hook = ca.get("hook_text", "")
+                if hook:
+                    md += f": \"{hook}\""
+                md += "\n"
+
+                compact_fields = []
+                for field in ["framework", "messaging_angle", "tone", "emotion", "hook_strength", "funnel_stage", "effectiveness"]:
+                    val = ca.get(field)
+                    if val:
+                        compact_fields.append(f"{field}={val}")
+                if compact_fields:
+                    md += f"  [{' | '.join(compact_fields)}]\n"
+                if ad_copy:
+                    md += f"  Copy: \"{ad_copy[:200]}\"\n"
+                transcription = ca.get("transcription", "")
+                if transcription and len(transcription) > 20:
+                    md += f"  Transcription: \"{transcription[:400]}\"\n"
+                hfd = ca.get("high_fidelity_description", "")
+                if hfd:
+                    md += f"  Visual: {hfd[:300]}\n"
+                strat = ca.get("strategic_summary", "")
+                if strat:
+                    md += f"  Strategy: {strat[:300]}\n"
+                md += "\n"
+
+    # ── Section 17e: Content Insights ────────────────────────────────────
+
+    content_ins = getattr(ins, 'content_insights', None)
+    if content_ins and isinstance(content_ins, list):
+        md += """
+---
+
+## 17e. Content Insights
+
+"""
+        for ci in content_ins:
+            if isinstance(ci, dict):
+                md += f"- **{ci.get('insight', ci.get('title', str(ci)))}**\n"
+                for k, v in ci.items():
+                    if k not in ('insight', 'title') and v:
+                        md += f"  - {k.replace('_', ' ').title()}: {v}\n"
+            else:
+                md += f"- {ci}\n"
+        md += "\n"
+
+    # ── Section 17f: Data by Topic ───────────────────────────────────────
+
+    data_by_topic = getattr(ins, 'data_by_topic', None)
+    if data_by_topic and isinstance(data_by_topic, dict):
+        md += """
+---
+
+## 17f. Customer Data by Topic
+
+*Customer feedback organized by topic — raw quotes with sentiment and source.*
+
+"""
+        for topic, items in data_by_topic.items():
+            if not isinstance(items, list) or not items:
+                continue
+            md += f"### {topic.replace('_', ' ').title()} ({len(items)} items)\n\n"
+            for item in items[:15]:
+                if isinstance(item, dict):
+                    content = item.get("content", item.get("text", ""))[:300]
+                    source = item.get("source_type", "")
+                    sentiment = item.get("sentiment", "")
+                    score = item.get("sentiment_score")
+                    score_str = f" ({score:+.2f})" if score is not None else ""
+                    md += f'> "{content}"\n'
+                    meta = []
+                    if source:
+                        meta.append(source)
+                    if sentiment:
+                        meta.append(f"{sentiment}{score_str}")
+                    if meta:
+                        md += f"> — *{' | '.join(meta)}*\n"
+                    md += "\n"
+                elif isinstance(item, str):
+                    md += f'> "{item[:300]}"\n\n'
+
     md += """
 ---
 
@@ -803,6 +1145,412 @@ These clusters are built from real customer language, grouped by **trigger** (wh
                     elif isinstance(s, str):
                         md += f'> "{s[:300]}"\n\n'
             md += "\n"
+
+    # ── Section 19b: Creative Target Personas (CTPs) ────────────────────
+
+    ctp_data = getattr(ins, 'ctp_data', None) or []
+    if ctp_data and isinstance(ctp_data, list):
+        ctp_stats = getattr(ins, 'ctp_stats', None) or {}
+        total_snippets = ctp_stats.get("total_snippets", sum(c.get("snippet_count", 0) for c in ctp_data))
+        md += f"""
+---
+
+## 19b. Creative Target Personas (CTPs)
+
+*{len(ctp_data)} personas discovered from {total_snippets} customer snippets.*
+
+"""
+        for ctp in ctp_data:
+            ctp_id = ctp.get("ctp_id", "")
+            name = ctp.get("ctp_name", "Unknown")
+            weight = ctp.get("weight", 0)
+            stance = ctp.get("general_stance", "")
+            count = ctp.get("snippet_count", 0)
+            cd6 = ctp.get("core_insight_general", "")
+            product_belief = ctp.get("core_insight_product_anchored", "")
+            source_path = ctp.get("source", "")
+
+            md += f"### {ctp_id}: {name} (Weight: {weight}/10, {count} snippets)\n\n"
+            md += f"**Stance**: {stance}"
+            stance_tags = ctp.get("stance_tags", [])
+            if stance_tags and isinstance(stance_tags, list):
+                md += f" | **Tags**: {', '.join(stance_tags)}"
+            if source_path:
+                md += f" | **Path**: {source_path}"
+            md += "\n\n"
+
+            if cd6:
+                md += f"**Core Insight:** \"{cd6}\"\n\n"
+            if product_belief:
+                md += f"**Product-Anchored Belief:** \"{product_belief}\"\n\n"
+
+            psychology = ctp.get("archetype_psychology") or ctp.get("psychology", "")
+            if psychology:
+                md += f"**Psychology:** {psychology}\n\n"
+
+            unique = ctp.get("what_makes_them_unique", "")
+            if unique:
+                md += f"**What Makes Them Unique:** {unique}\n\n"
+
+            counter = ctp.get("counter_segment", "")
+            if counter:
+                md += f"**Counter-Segment:** {counter}\n\n"
+
+            markers = ctp.get("behavioral_markers", [])
+            if markers and isinstance(markers, list):
+                md += "**Behavioral Markers:** " + " · ".join(markers) + "\n\n"
+
+            decision_factors = ctp.get("decision_factors", [])
+            if decision_factors and isinstance(decision_factors, list):
+                md += "**Decision Factors:**\n"
+                for df in decision_factors:
+                    if isinstance(df, dict):
+                        factor = df.get("factor", str(df))
+                        priority = df.get("priority", "")
+                        prio_tag = f" [{priority}]" if priority else ""
+                        md += f"- {factor}{prio_tag}\n"
+                    else:
+                        md += f"- {df}\n"
+                md += "\n"
+
+            vocabulary = ctp.get("vocabulary", [])
+            if vocabulary and isinstance(vocabulary, list):
+                md += "**Vocabulary:** " + ", ".join(f'"{v}"' for v in vocabulary) + "\n\n"
+
+            # Pain points
+            pain_points = ctp.get("pain_points", [])
+            if pain_points:
+                md += "**Pain Points:**\n"
+                for pp in pain_points:
+                    if isinstance(pp, dict):
+                        md += f"- {pp.get('pain_point', str(pp))}\n"
+                    else:
+                        md += f"- {pp}\n"
+                md += "\n"
+
+            # Desires (was missing)
+            desires = ctp.get("desires", [])
+            if desires and isinstance(desires, list):
+                md += "**Desires:**\n"
+                for d in desires:
+                    if isinstance(d, dict):
+                        md += f"- {d.get('desire', str(d))}\n"
+                    else:
+                        md += f"- {d}\n"
+                md += "\n"
+
+            # Barriers & objections (was missing)
+            barriers = ctp.get("barriers_objections", [])
+            if barriers and isinstance(barriers, list):
+                md += "**Barriers / Objections:**\n"
+                for bo in barriers:
+                    if isinstance(bo, dict):
+                        btype = bo.get("type", "")
+                        prompt = bo.get("prompt", str(bo))
+                        tag = f" [{btype}]" if btype else ""
+                        md += f"- {prompt}{tag}\n"
+                    else:
+                        md += f"- {bo}\n"
+                md += "\n"
+
+            # Kill signals (was missing)
+            kill_signals = ctp.get("kill_signals", {})
+            if kill_signals:
+                if isinstance(kill_signals, dict):
+                    existence = kill_signals.get("existence", [])
+                    if existence and isinstance(existence, list):
+                        md += "**Kill Signals:**\n"
+                        for ks in existence:
+                            md += f"- {ks}\n"
+                        md += "\n"
+                elif isinstance(kill_signals, list):
+                    md += "**Kill Signals:**\n"
+                    for ks in kill_signals:
+                        md += f"- {ks}\n"
+                    md += "\n"
+
+            # Hooks & value props per CTP
+            rec_hooks = ctp.get("recommended_hooks", [])
+            if rec_hooks and isinstance(rec_hooks, list):
+                md += "**Recommended Hooks:**\n"
+                for h in rec_hooks:
+                    if isinstance(h, dict):
+                        text = h.get("hook", h.get("text", str(h)))
+                        src_tag = h.get("source", "")
+                        tag_str = f" `{src_tag}`" if src_tag else ""
+                        md += f"- {text}{tag_str}\n"
+                    else:
+                        md += f"- {h}\n"
+                md += "\n"
+
+            rec_vp = ctp.get("recommended_value_props", [])
+            if rec_vp and isinstance(rec_vp, list):
+                md += "**Recommended Value Props:**\n"
+                for vp in rec_vp:
+                    if isinstance(vp, dict):
+                        text = vp.get("value_prop", vp.get("text", str(vp)))
+                        md += f"- {text}\n"
+                    else:
+                        md += f"- {vp}\n"
+                md += "\n"
+
+            frameworks = ctp.get("frameworks_that_resonate", [])
+            if frameworks and isinstance(frameworks, list):
+                md += "**Frameworks That Resonate:**\n"
+                for fw in frameworks:
+                    if isinstance(fw, dict):
+                        name_fw = fw.get("framework", fw.get("name", str(fw)))
+                        rationale = fw.get("rationale", "")
+                        md += f"- **{name_fw}**"
+                        if rationale:
+                            md += f" — {rationale}"
+                        md += "\n"
+                    else:
+                        md += f"- {fw}\n"
+                md += "\n"
+
+            # Tone & Emotion Arc — handle both string and dict
+            tone_arc = ctp.get("tone_and_emotion_arc", "")
+            if tone_arc:
+                if isinstance(tone_arc, dict):
+                    primary_tone = tone_arc.get("primary_tone", "")
+                    emotion_arc = tone_arc.get("emotion_arc", "")
+                    rationale = tone_arc.get("rationale", "")
+                    md += f"**Tone & Emotion Arc:**\n"
+                    if primary_tone:
+                        md += f"- Tone: {primary_tone}\n"
+                    if emotion_arc:
+                        md += f"- Arc: {emotion_arc}\n"
+                    if rationale:
+                        md += f"- Rationale: {rationale}\n"
+                    md += "\n"
+                else:
+                    md += f"**Tone & Emotion Arc:** {tone_arc}\n\n"
+
+            ad_gap = ctp.get("ad_creative_gap", "")
+            if ad_gap:
+                md += f"**Ad Creative Gap:** {ad_gap}\n\n"
+
+            anti_patterns = ctp.get("anti_patterns", [])
+            if anti_patterns and isinstance(anti_patterns, list):
+                md += "**Anti-Patterns:** " + " · ".join(anti_patterns) + "\n\n"
+
+            # Source distribution (was missing)
+            source_dist = ctp.get("source_distribution", {})
+            if source_dist and isinstance(source_dist, dict):
+                sorted_sources = sorted(source_dist.items(), key=lambda x: x[1], reverse=True)
+                md += "**Source Distribution:** " + " · ".join(f"{s}: {c}" for s, c in sorted_sources) + "\n\n"
+
+            # Evidence quotes
+            evidence_quotes = ctp.get("evidence_quotes", [])
+            if evidence_quotes and isinstance(evidence_quotes, list):
+                md += "**Evidence Quotes:**\n"
+                for eq in evidence_quotes[:5]:
+                    if isinstance(eq, dict):
+                        md += f'> "{eq.get("quote", str(eq))}"\n\n'
+                    else:
+                        md += f'> "{eq}"\n\n'
+
+            # Representative snippets (was missing — raw cluster verbatims)
+            rep_snippets = ctp.get("representative_snippets", [])
+            if rep_snippets and isinstance(rep_snippets, list):
+                md += f"**Representative Verbatims ({len(rep_snippets)} samples):**\n"
+                for rs in rep_snippets:
+                    if isinstance(rs, dict):
+                        content = rs.get("content", "")[:300]
+                        source = rs.get("source_type", "")
+                        sent = rs.get("sentiment", "")
+                        md += f'> "{content}"\n'
+                        meta = []
+                        if source:
+                            meta.append(source)
+                        if sent:
+                            meta.append(sent)
+                        if meta:
+                            md += f"> — *{' | '.join(meta)}*\n"
+                        md += "\n"
+                    elif isinstance(rs, str):
+                        md += f'> "{rs[:300]}"\n\n'
+
+            md += "\n"
+
+    # ── Section 19c: CTP Hypothesis Layer ─────────────────────────────────
+
+    ctp_hypothesis = getattr(ins, 'ctp_hypothesis', None) or []
+    if ctp_hypothesis and isinstance(ctp_hypothesis, list):
+        md += """
+---
+
+## 19c. CTP Hypothesis Layer (Strategy per Persona)
+
+*Demographics, angles, frameworks, tone, and emotion per CTP.*
+
+"""
+        hyp_by_id = {h.get("ctp_id", ""): h for h in ctp_hypothesis if isinstance(h, dict)}
+        for ctp in ctp_data:
+            ctp_id = ctp.get("ctp_id", "")
+            ctp_name = ctp.get("ctp_name", "Unknown")
+            hyp = hyp_by_id.get(ctp_id, {})
+            if not hyp:
+                continue
+
+            md += f"### {ctp_id}: {ctp_name}\n\n"
+
+            # Demographics — full
+            demo = hyp.get("demographic_variables", {})
+            if demo and isinstance(demo, dict):
+                md += "**Demographic Variables:**\n"
+                for field, label in [("age_range", "Age"), ("gender_skew", "Gender"),
+                                     ("income_level", "Income"), ("education", "Education"),
+                                     ("platform_affinity", "Platforms"), ("geo_notes", "Geo"),
+                                     ("aspirations", "Aspirations"), ("lifestyle_markers", "Lifestyle")]:
+                    val = demo.get(field)
+                    if val:
+                        if isinstance(val, list):
+                            val = ", ".join(str(v) for v in val)
+                        md += f"- {label}: {val}\n"
+                md += "\n"
+
+            # Angles — full with description, awareness, emotional trigger, evidence
+            angles = hyp.get("angles", [])
+            if angles:
+                md += "**Angles (CD7):**\n"
+                for i, angle in enumerate(angles, 1):
+                    if isinstance(angle, dict):
+                        name_a = angle.get("angle_name", f"Angle {i}")
+                        vtag = angle.get("validation_tag", "hypothesis")
+                        desc = angle.get("angle_description", "")
+                        awareness = angle.get("awareness_level", "")
+                        trigger = angle.get("emotional_trigger", "")
+                        evidence = angle.get("validation_evidence", "")
+                        md += f"- **{name_a}** [{vtag}]"
+                        if awareness:
+                            md += f" — {awareness}"
+                        md += "\n"
+                        if desc:
+                            md += f"  {desc}\n"
+                        if trigger:
+                            md += f"  *Emotional trigger:* {trigger}\n"
+                        if evidence:
+                            md += f"  *Evidence:* {evidence}\n"
+                    else:
+                        md += f"- {angle}\n"
+                md += "\n"
+
+            # Funnel stage + rationale
+            funnel_s = hyp.get("funnel_stage", {})
+            if funnel_s and isinstance(funnel_s, dict):
+                md += f"**Funnel Stage (CD8):** {funnel_s.get('stage', '?')}\n"
+                rationale = funnel_s.get("rationale", "")
+                if rationale:
+                    md += f"  *Rationale:* {rationale}\n"
+                md += "\n"
+
+            # Framework + rationale
+            fw = hyp.get("framework_tactic", {})
+            if fw and isinstance(fw, dict):
+                parts = [fw.get("primary", ""), fw.get("secondary", "")]
+                md += f"**Framework / Tactic (CD10):** {' + '.join(p for p in parts if p)}\n"
+                rationale = fw.get("rationale", "")
+                if rationale:
+                    md += f"  *Rationale:* {rationale}\n"
+                md += "\n"
+
+            # Visual style (was missing entirely)
+            vs = hyp.get("visual_style", {})
+            if vs and isinstance(vs, dict):
+                style = vs.get("style", "")
+                rationale = vs.get("rationale", "")
+                if style:
+                    md += f"**Visual Style (CD11):** {style}\n"
+                    if rationale:
+                        md += f"  *Rationale:* {rationale}\n"
+                    md += "\n"
+
+            # Narrative driver (was missing entirely)
+            nd = hyp.get("narrative_driver", {})
+            if nd and isinstance(nd, dict):
+                driver = nd.get("driver", "")
+                rationale = nd.get("rationale", "")
+                if driver:
+                    md += f"**Narrative Driver (CD12):** {driver}\n"
+                    if rationale:
+                        md += f"  *Rationale:* {rationale}\n"
+                    md += "\n"
+
+            # Tone + rationale
+            tone = hyp.get("tone", {})
+            if tone and isinstance(tone, dict):
+                parts = [tone.get("primary", ""), tone.get("secondary", "")]
+                md += f"**Tone (CD13):** {' + '.join(p for p in parts if p)}\n"
+                rationale = tone.get("rationale", "")
+                if rationale:
+                    md += f"  *Rationale:* {rationale}\n"
+                md += "\n"
+
+            # Emotion + arc + rationale
+            emotion = hyp.get("emotion", {})
+            if emotion and isinstance(emotion, dict):
+                primary_em = emotion.get("primary_emotion", "")
+                arc = emotion.get("arc", "")
+                rationale = emotion.get("rationale", "")
+                if primary_em or arc:
+                    md += f"**Emotion (CD14):** {primary_em}"
+                    if arc:
+                        md += f" — Arc: {arc}"
+                    md += "\n"
+                    if rationale:
+                        md += f"  *Rationale:* {rationale}\n"
+                    md += "\n"
+
+            md += "\n"
+
+    # ── Section 19d: Target Personas (TOFU Prospects) ─────────────────────
+
+    target_personas = getattr(ins, 'target_personas', None) or []
+    if target_personas and isinstance(target_personas, list):
+        from .ctp_export import _render_target_personas
+        md += "\n---\n\n## 19d. " + _render_target_personas(target_personas).lstrip("# ")
+
+    # ── Section 19e: Community Dialect ────────────────────────────────────
+
+    community_dialect = getattr(ins, 'community_dialect', None) or []
+    if community_dialect:
+        md += """
+---
+
+## 19e. Community Dialect
+
+*Terms and phrases used by this brand's community — use these in copy for authenticity.*
+
+"""
+        terms = []
+        for term in community_dialect:
+            if isinstance(term, dict):
+                terms.append(term.get('term', str(term)))
+            else:
+                terms.append(str(term))
+        md += ", ".join(f'"{t}"' for t in terms) + "\n\n"
+
+    # ── Section 19f: Proto-ICP Recommendations ───────────────────────────
+
+    proto_recs = getattr(ins, 'proto_icp_recommendations', None) or []
+    if proto_recs and isinstance(proto_recs, list):
+        md += """
+---
+
+## 19f. Proto-ICP Recommendations
+
+"""
+        for i, rec in enumerate(proto_recs, 1):
+            if isinstance(rec, dict):
+                md += f"{i}. **{rec.get('recommendation', rec.get('name', str(rec)))}**\n"
+                for k, v in rec.items():
+                    if k not in ('recommendation', 'name') and v:
+                        md += f"   - {k.replace('_', ' ').title()}: {v}\n"
+            else:
+                md += f"{i}. {rec}\n"
+        md += "\n"
 
     # ── Section 20: Raw Customer Verbatims by Source ─────────────────────
 
@@ -1163,6 +1911,56 @@ Real customer feedback with source attribution, sentiment, and intake classifica
                 if isinstance(v, str) and v:
                     md += f"- **{k.replace('_',' ').title()}:** {v}\n"
             md += "\n"
+
+    # A/B Test Suggestions
+    ab_tests = safe_get(insight, 'ab_test_suggestions', [])
+    if ab_tests and isinstance(ab_tests, list):
+        md += "\n## 29. A/B Test Suggestions\n\n"
+        for i, test in enumerate(ab_tests, 1):
+            if isinstance(test, dict):
+                md += f"{i}. **{test.get('name', test.get('test', f'Test {i}'))}**\n"
+                for k, v in test.items():
+                    if k not in ('name', 'test') and v:
+                        md += f"   - {k.replace('_', ' ').title()}: {v}\n"
+            else:
+                md += f"{i}. {test}\n"
+        md += "\n"
+
+    # Thumbnail Suggestions
+    thumbnails = safe_get(insight, 'thumbnail_suggestions', [])
+    if thumbnails and isinstance(thumbnails, list):
+        md += "\n## 30. Thumbnail Suggestions\n\n"
+        for i, thumb in enumerate(thumbnails, 1):
+            if isinstance(thumb, dict):
+                md += f"{i}. **{thumb.get('concept', thumb.get('title', f'Thumbnail {i}'))}**\n"
+                for k, v in thumb.items():
+                    if k not in ('concept', 'title') and v:
+                        md += f"   - {k.replace('_', ' ').title()}: {v}\n"
+            else:
+                md += f"{i}. {thumb}\n"
+        md += "\n"
+
+    # Landing Page Analysis
+    landing_pages = safe_get(insight, 'landing_page_analysis', [])
+    if landing_pages and isinstance(landing_pages, list):
+        md += "\n## 31. Landing Page Analysis\n\n"
+        for i, lp in enumerate(landing_pages, 1):
+            if isinstance(lp, dict):
+                url = lp.get('url', lp.get('page_url', ''))
+                md += f"### {i}. {url or f'Page {i}'}\n\n"
+                for k, v in lp.items():
+                    if k not in ('url', 'page_url') and v:
+                        label = k.replace('_', ' ').title()
+                        if isinstance(v, list):
+                            md += f"- **{label}:** {', '.join(str(x) for x in v)}\n"
+                        elif isinstance(v, dict):
+                            md += f"- **{label}:**\n"
+                            for dk, dv in v.items():
+                                if dv:
+                                    md += f"  - {dk.replace('_', ' ').title()}: {dv}\n"
+                        else:
+                            md += f"- **{label}:** {v}\n"
+                md += "\n"
 
     md += f"""
 ---

@@ -9,6 +9,7 @@ from typing import Optional, List
 from pydantic import BaseModel
 
 from ..database import get_db
+from ..config import settings
 from ..services.chatbot import ChatbotService
 
 
@@ -261,6 +262,9 @@ async def save_insight(
     """
     from ..models import BrandKnowledge
 
+    if request.brand_id <= 0:
+        raise HTTPException(status_code=400, detail="A valid brand_id is required to save brand knowledge")
+
     try:
         knowledge = BrandKnowledge(
             brand_id=request.brand_id,
@@ -351,6 +355,12 @@ async def chat_with_anythingllm(
     First, set ANYTHINGLLM_API_KEY in your .env file.
     Get it from AnythingLLM: Settings > Developer API
     """
+    if not settings.ENABLE_ANYTHINGLLM_SYNC:
+        raise HTTPException(
+            status_code=410,
+            detail="AnythingLLM RAG is disabled. Use the direct chat endpoint instead.",
+        )
+
     from ..services.anythingllm import get_anythingllm_client, get_brand_workspace_slug, get_workspace_slug
     from ..models import ResearchSession, Brand
     from sqlalchemy import select
@@ -408,6 +418,12 @@ async def chat_with_anythingllm(
 @router.get("/chat/rag/workspaces")
 async def list_anythingllm_workspaces():
     """List available AnythingLLM workspaces."""
+    if not settings.ENABLE_ANYTHINGLLM_SYNC:
+        raise HTTPException(
+            status_code=410,
+            detail="AnythingLLM RAG is disabled. Use the direct chat endpoint instead.",
+        )
+
     from ..services.anythingllm import get_anythingllm_client
     
     client = get_anythingllm_client()

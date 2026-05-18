@@ -323,11 +323,20 @@ class InsightResponse(BaseModel):
     ctp_data: Optional[List[Dict[str, Any]]] = None
     ctp_hypothesis: Optional[List[Dict[str, Any]]] = None
     ctp_stats: Optional[Dict[str, Any]] = None
+    # Target Personas (April 2026) — prospects, not customers. Schwartz
+    # Unaware/Problem-Aware/Solution-Aware. Distinct from ctp_data.
+    target_personas: Optional[List[Dict[str, Any]]] = None
 
     # Fase 3 generators
     ugc_briefs: Optional[List[Dict[str, Any]]] = None
     funnel_strategy: Optional[Dict[str, Any]] = None
     post_purchase_survey: Optional[Dict[str, Any]] = None
+
+    # Strategic angles (P0.1 — restored from llm/prompts.py)
+    failed_solution_angles: Optional[List[Dict[str, Any]]] = None
+    transformation_angles: Optional[List[Dict[str, Any]]] = None
+    weak_signals: Optional[List[Dict[str, Any]]] = None
+    community_dialect: Optional[List[Any]] = None
 
     # Full report
     full_report: Optional[str]

@@ -145,6 +145,7 @@ FRAMEWORK = [
     "Interview",
     "Behind the Scenes",
     "Transformation",
+    "Objection Handling",
 ]
 
 EMOTION = [

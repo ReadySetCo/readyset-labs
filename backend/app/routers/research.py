@@ -4,6 +4,7 @@ Research router - Endpoints for running brand research.
 
 import asyncio
 from fastapi import APIRouter, Depends, HTTPException, status, BackgroundTasks, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from typing import List, Optional, Dict, Any
@@ -723,6 +724,157 @@ async def get_session_insights(
     return insight
 
 
+class RegenerateCTPRequest(BaseModel):
+    ctp_id: str
+
+
+@router.post("/session/{session_id}/regenerate-ctp")
+async def regenerate_single_ctp(
+    session_id: int,
+    payload: RegenerateCTPRequest,
+    db: AsyncSession = Depends(get_db),
+):
+    """Re-run ONLY the deep enrichment step for a single CTP.
+
+    Reuses the existing CTP's representative_snippets + general_stance + name
+    as the seed (skipping discovery). The LLM is given the same brand context
+    and a fresh chance to refine the deep fields. The CTP slot is replaced
+    in-place at its current position in insight.ctp_data.
+    """
+    from .. import models  # local import to avoid circulars
+    from ..services.brand_context import (
+        build_brand_context,
+        render_context_block,
+        render_snippets_block,
+    )
+    from ..services.ctp_builder import CTPBuilder
+
+    insight = (await db.execute(
+        select(Insight).where(Insight.session_id == session_id)
+    )).scalar_one_or_none()
+    if not insight:
+        raise HTTPException(404, f"No insights for session {session_id}")
+
+    ctps = list(insight.ctp_data or [])
+    target_idx = next((i for i, c in enumerate(ctps) if c.get("ctp_id") == payload.ctp_id), None)
+    if target_idx is None:
+        raise HTTPException(404, f"CTP {payload.ctp_id} not found in session {session_id}")
+
+    ctp = ctps[target_idx]
+    rep_snippets = ctp.get("representative_snippets") or []
+    if not rep_snippets:
+        raise HTTPException(400, f"CTP {payload.ctp_id} has no representative_snippets to regenerate from")
+
+    # Resolve brand
+    rs = (await db.execute(
+        select(ResearchSession).where(ResearchSession.id == session_id)
+    )).scalar_one_or_none()
+    if not rs:
+        raise HTTPException(404, f"Session {session_id} not found")
+    brand = (await db.execute(
+        select(models.Brand).where(models.Brand.id == rs.brand_id)
+    )).scalar_one_or_none()
+    if not brand:
+        raise HTTPException(404, f"Brand for session {session_id} not found")
+
+    # Re-build the brand_context_block (same shape the orchestrator uses)
+    insights_so_far = {
+        "market_pain_points": insight.market_pain_points or [],
+        "value_props": insight.value_props or [],
+        "customer_desires": insight.customer_desires or [],
+        "purchase_triggers": insight.purchase_triggers or [],
+        "objections": insight.objections or [],
+        "decision_factors": insight.decision_factors or [],
+        "messaging_angles": insight.messaging_angles or [],
+        "verbatim_quotes": insight.verbatim_quotes or [],
+        "customer_language": insight.customer_language or [],
+        "tone_emotions": insight.tone_emotions or [],
+        "trending_topics": insight.trending_topics or [],
+        "competitor_analysis": insight.competitor_analysis,
+        "competitors_mentioned": insight.competitors_mentioned or [],
+        "recommended_hooks": insight.recommended_hooks or [],
+        "hooks_library": insight.hooks_library,
+    }
+    ctx = build_brand_context(
+        brand=brand,
+        insights_so_far=insights_so_far,
+        snippets=rep_snippets,  # at minimum, use the CTP's snippets — keeps prompt focused
+        ad_library_data=insight.ad_library_data,
+        ad_creative_patterns=insight.ad_creative_patterns,
+    )
+    brand_block = render_context_block(ctx)
+
+    # Build the archetype seed dict from the saved CTP fields. Preserve
+    # evidence_quotes from the original discovery — they're trail back to
+    # the source data and we don't want to lose them on regeneration.
+    archetype = {
+        "name": ctp.get("ctp_name") or "",
+        "psychology": ctp.get("archetype_psychology") or ctp.get("core_insight_general") or "",
+        "behavioral_markers": ctp.get("behavioral_markers") or [],
+        "counter_segment": ctp.get("counter_segment") or "",
+        "what_makes_them_unique": ctp.get("what_makes_them_unique") or "",
+        "stance_tags": ctp.get("stance_tags") or ([ctp.get("general_stance")] if ctp.get("general_stance") else []),
+        "evidence_quotes": ctp.get("evidence_quotes") or [],
+    }
+
+    # Hook + value-prop pools
+    hook_pool: List[str] = []
+    for v in (insight.recommended_hooks or []):
+        if v and str(v) not in hook_pool:
+            hook_pool.append(str(v))
+    hl = insight.hooks_library
+    if isinstance(hl, list):
+        for v in hl:
+            if v and str(v) not in hook_pool:
+                hook_pool.append(str(v))
+    elif isinstance(hl, dict):
+        for v in (hl.get("hooks") or []):
+            if v and str(v) not in hook_pool:
+                hook_pool.append(str(v))
+    value_props_pool = [str(v) for v in (insight.value_props or []) if v]
+
+    builder = CTPBuilder()
+    builder._current_brand_name = brand.name
+
+    deep = await builder.deep_enrich_archetype(
+        archetype=archetype,
+        attributed_snippets=rep_snippets,
+        brand_name=brand.name,
+        brand_block=brand_block,
+        ads_for_archetype_block="(ads not re-aligned for single-CTP regeneration)",
+        hook_pool=hook_pool,
+        value_props_pool=value_props_pool,
+    )
+    if not deep:
+        raise HTTPException(502, "Deep enrichment LLM call failed")
+
+    # Re-assemble. The original total_snippets is unknown here — preserve the
+    # existing review_percentage/weight so we don't accidentally renormalize.
+    fake_total = max(1, ctp.get("snippet_count") or 1)
+    rebuilt = builder._assemble_ctp_from_discovery(
+        ctp_num=int(ctp.get("ctp_id", "CTP-01").replace("CTP-", "")) or (target_idx + 1),
+        archetype=archetype,
+        deep=deep,
+        attributed_snippets=rep_snippets,
+        total_snippets=fake_total,
+    )
+    rebuilt_dict = rebuilt.to_dict()
+    # Preserve metrics that were valid at original-discovery time
+    rebuilt_dict["weight"] = ctp.get("weight", rebuilt_dict.get("weight"))
+    rebuilt_dict["review_percentage"] = ctp.get("review_percentage", rebuilt_dict.get("review_percentage"))
+    rebuilt_dict["snippet_count"] = ctp.get("snippet_count", rebuilt_dict.get("snippet_count"))
+    rebuilt_dict["ctp_id"] = ctp.get("ctp_id")
+    # If the LLM kept the same name, keep the original; if it refined, accept the refinement
+    if not rebuilt_dict.get("ctp_name"):
+        rebuilt_dict["ctp_name"] = ctp.get("ctp_name")
+
+    ctps[target_idx] = rebuilt_dict
+    insight.ctp_data = ctps
+    await db.commit()
+
+    return {"ok": True, "ctp_id": payload.ctp_id, "ctp_name": rebuilt_dict.get("ctp_name")}
+
+
 @router.get("/session/{session_id}/full", response_model=FullResearchResult)
 async def get_full_research_result(
     session_id: int,
@@ -1147,6 +1299,7 @@ async def export_session_report(
     from fastapi.responses import Response
     from ..services.brand_export import build_export
     from ..services.ctp_export import build_raw_reviews_export, build_ctp_export, build_hypothesis_export
+    from ..services.excel_database_export import build_rsw_database_export
 
     # Get session with insights
     from sqlalchemy.orm import selectinload
@@ -1172,7 +1325,7 @@ async def export_session_report(
     if session.insights:
         insight = session.insights[-1] if isinstance(session.insights, list) else session.insights
 
-    if format != "raw_reviews" and not insight:
+    if format not in ("raw_reviews", "rsw_database") and not insight:
         raise HTTPException(status_code=404, detail="No insights for this session")
 
     # Get scraped data
@@ -1195,6 +1348,16 @@ async def export_session_report(
     elif format == "hypothesis":
         md = build_hypothesis_export(brand, insight, scraped_data)
         filename = f"{safe_name}-hypothesis-layer.md"
+    elif format == "rsw_database":
+        xlsx_bytes = build_rsw_database_export(brand, insight, scraped_data)
+        filename = f"{safe_name}-rsw-database.xlsx"
+        return Response(
+            content=xlsx_bytes,
+            media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            headers={
+                "Content-Disposition": f'attachment; filename="{filename}"'
+            }
+        )
     else:  # "full" or any other value
         md = build_export(brand, insight, scraped_data)
         filename = f"{safe_name}-research-export.md"

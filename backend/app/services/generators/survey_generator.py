@@ -29,7 +29,7 @@ class SurveyGenerator:
     """Generates post-purchase survey questions designed to extract creative intelligence."""
 
     def __init__(self):
-        self.llm = get_llm_client(provider="gemini")
+        self.llm = get_llm_client(task_type="creative")
 
     async def generate_survey(
         self,

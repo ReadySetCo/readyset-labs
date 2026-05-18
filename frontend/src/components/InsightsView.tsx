@@ -421,6 +421,27 @@ export default function InsightsView({ insights }: { insights: Insight }) {
           </div>
         )}
 
+        {/* Community Dialect */}
+        {(insights as any).community_dialect && (insights as any).community_dialect.length > 0 && (
+          <div className="glass-card p-6 border-l-4 border-cyan-500">
+            <h4 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+              <span className="text-cyan-400">💬</span>
+              Community Dialect ({(insights as any).community_dialect.length})
+            </h4>
+            <p className="text-xs text-slate-500 mb-4">Slang, shorthand, insider phrases — the words customers use with each other.</p>
+            <div className="flex flex-wrap gap-2">
+              {(insights as any).community_dialect.map((phrase: any, i: number) => {
+                const text = typeof phrase === 'string' ? phrase : (phrase?.phrase || phrase?.term || JSON.stringify(phrase));
+                return (
+                  <span key={i} className="tag bg-cyan-500/20 text-cyan-300 border border-cyan-500/20">
+                    {text}
+                  </span>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Tone & Content Insights */}
         <div className="grid md:grid-cols-2 gap-6">
           {insights.tone_emotions && insights.tone_emotions.length > 0 && (

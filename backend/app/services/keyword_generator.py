@@ -12,7 +12,7 @@ class KeywordGeneratorService:
     """Service for generating search queries and identifying communities."""
     
     def __init__(self):
-        self.llm = get_llm_client()
+        self.llm = get_llm_client(task_type="strategy")
     
     async def generate(
         self,
@@ -184,4 +184,3 @@ Add NEW queries (don't repeat existing ones) in the same JSON structure:
             result["segment_queries"][key] = list(set(base_list + add_list))
         
         return result
-

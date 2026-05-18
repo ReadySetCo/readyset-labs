@@ -5,6 +5,7 @@ Runs AFTER the Intake Engine (snippet_classifier) so it can use trigger/blocker 
 """
 
 import asyncio
+from collections import Counter
 from typing import Dict, Any, List, Optional
 from .llm.client import get_llm_client
 from .llm.ctp_prompts import STANCE_CLASSIFICATION_PROMPT
@@ -15,14 +16,23 @@ from .llm.ctp_prompts import STANCE_CLASSIFICATION_PROMPT
 MAX_SNIPPETS_FOR_STANCE = 300
 
 # Source-type quality ranking for stance classification.
-# Reviews/forums produce coherent stance signals; tweets rarely do.
+# Rebalanced (April 2026): the previous ranking gave reviews scores so dominant
+# that 90%+ of the cap was filled by Trustpilot/Reddit. Review-sites attract
+# critical voices, which is why "skeptic" appeared in 100% of analyses. The
+# rebalanced scores still favor reviews but allow social/UGC enough headroom
+# to surface non-skeptical worldviews (enthusiasts, peer-influenced buyers, etc.).
 _SOURCE_QUALITY = {
-    "trustpilot": 100, "reddit": 95, "g2": 90, "capterra": 90,
-    "amazon": 85, "app_store": 85, "google_reviews": 80,
-    "site_review": 80, "other_review": 75, "forum": 70,
-    "quora": 65, "youtube_comment": 60,
-    "tiktok": 40, "instagram": 35, "twitter": 20,
+    "trustpilot": 90, "reddit": 90, "g2": 85, "capterra": 85,
+    "amazon": 85, "app_store": 80, "google_reviews": 80,
+    "site_review": 80, "other_review": 75, "forum": 75,
+    "quora": 75, "youtube_comment": 70,
+    "tiktok": 70, "instagram": 65, "twitter": 50,
 }
+
+# Diversity guarantee for the cap: no single source_type should consume more
+# than this fraction of the 300-slot budget. Forces round-robin behavior so
+# Trustpilot can't monopolize the cap and silence every other voice.
+_PER_SOURCE_CAP_FRACTION = 0.40
 
 
 def _quality_score(snippet: Dict[str, Any]) -> int:
@@ -31,6 +41,57 @@ def _quality_score(snippet: Dict[str, Any]) -> int:
     # Longer content carries more signal, up to a 30-pt bonus
     length_bonus = min(30, len(snippet.get("content", "") or "") // 30)
     return base + length_bonus
+
+
+def _select_with_source_diversity(
+    snippets: List[Dict[str, Any]],
+    cap: int,
+) -> List[Dict[str, Any]]:
+    """Select up to `cap` snippets, sorted by quality but with per-source quotas.
+
+    Prevents a single high-quality source (e.g., Trustpilot) from filling the
+    entire cap and biasing stance distribution toward review-site psychographics.
+    """
+    if len(snippets) <= cap:
+        return snippets
+
+    per_source_cap = max(1, int(cap * _PER_SOURCE_CAP_FRACTION))
+
+    # Sort by quality desc within each source bucket
+    by_source: Dict[str, List[Dict[str, Any]]] = {}
+    for s in sorted(snippets, key=_quality_score, reverse=True):
+        by_source.setdefault(s.get("source_type", "unknown"), []).append(s)
+
+    # Round-robin: take one from each source until cap is hit
+    selected: List[Dict[str, Any]] = []
+    consumed: Dict[str, int] = {src: 0 for src in by_source}
+
+    while len(selected) < cap:
+        progress = False
+        # Iterate sources ordered by their best snippet's quality
+        ordered_sources = sorted(
+            by_source.keys(),
+            key=lambda src: -_quality_score(by_source[src][0]) if by_source[src] else 0,
+        )
+        for src in ordered_sources:
+            if consumed[src] >= per_source_cap:
+                continue
+            queue = by_source[src]
+            if not queue:
+                continue
+            selected.append(queue.pop(0))
+            consumed[src] += 1
+            progress = True
+            if len(selected) >= cap:
+                break
+        if not progress:
+            # Per-source caps reached; relax the constraint and fill with whatever's left
+            for src in ordered_sources:
+                while by_source[src] and len(selected) < cap:
+                    selected.append(by_source[src].pop(0))
+            break
+
+    return selected
 
 
 # Known stance archetypes for normalization
@@ -45,13 +106,14 @@ class StanceClassifier:
     """Classifies scraped snippets with General Stance for CTP building."""
 
     def __init__(self):
-        self.llm = get_llm_client(provider="gemini")
+        self.llm = get_llm_client(task_type="classifier")
 
     async def classify_batch(
         self,
         snippets: List[Dict[str, Any]],
         batch_size: int = 25,
-        concurrency: int = 3
+        concurrency: int = 3,
+        brand_context_block: str = "",
     ) -> List[Dict[str, Any]]:
         """
         Classify multiple snippets with general stance using parallel batch LLM calls.
@@ -60,10 +122,15 @@ class StanceClassifier:
             snippets: List of dicts with 'content', 'source_type', etc.
             batch_size: Number of snippets per LLM call (25 = sweet spot for Gemini)
             concurrency: Number of parallel LLM calls
+            brand_context_block: Rendered brand-context text from
+                services.brand_context.render_context_block(). Without this,
+                the prompt will fall back to a "(no brand context available)"
+                placeholder and stance interpretations will be generic.
 
         Returns:
             List of snippets with stance classification added
         """
+        self._brand_context_block = brand_context_block or "(no brand context available)"
         if not snippets:
             return []
 
@@ -84,14 +151,18 @@ class StanceClassifier:
             return snippets
 
         # Cap to top-N highest-quality snippets to prevent runaway classification
-        # (prior bug: 1832 Twitter-heavy snippets hung the pipeline for 13+ min)
+        # (prior bug: 1832 Twitter-heavy snippets hung the pipeline for 13+ min).
+        # Use round-robin source diversity so Trustpilot can't monopolize the cap.
         if len(to_classify) > MAX_SNIPPETS_FOR_STANCE:
             original_count = len(to_classify)
-            to_classify = sorted(to_classify, key=_quality_score, reverse=True)[:MAX_SNIPPETS_FOR_STANCE]
+            to_classify = _select_with_source_diversity(to_classify, MAX_SNIPPETS_FOR_STANCE)
+            source_dist = Counter(s.get("source_type", "unknown") for s in to_classify)
             print(
-                f"    [Stance] Capped {original_count} -> {MAX_SNIPPETS_FOR_STANCE} "
-                f"high-quality snippets (reviews prioritized over tweets)"
+                f"    [Stance] Capped {original_count} -> {len(to_classify)} snippets "
+                f"with source diversity (per-source cap = "
+                f"{int(MAX_SNIPPETS_FOR_STANCE * _PER_SOURCE_CAP_FRACTION)})"
             )
+            print(f"    [Stance] Source distribution: {dict(source_dist)}")
 
         # Split into batches
         batches = []
@@ -260,5 +331,6 @@ Intake Tags: [{context_str}]
 
         return STANCE_CLASSIFICATION_PROMPT.format(
             num_snippets=len(snippets),
-            snippets_text=snippets_text
+            snippets_text=snippets_text,
+            brand_context_block=getattr(self, "_brand_context_block", "(no brand context available)"),
         )

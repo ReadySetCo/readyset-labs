@@ -40,7 +40,7 @@ class UGCBriefGenerator:
     """Generates UGC creator briefs using Gemini with research context."""
 
     def __init__(self):
-        self.llm = get_llm_client(provider="gemini")
+        self.llm = get_llm_client(task_type="creative")
 
     async def generate_briefs(
         self,

@@ -1,4 +1,5 @@
-import { Users, AlertCircle, Shield, Target, Zap, BarChart3 } from 'lucide-react';
+import { useState } from 'react';
+import { Users, AlertCircle, Shield, Target, Zap, BarChart3, BookOpen, Lightbulb, Quote, RefreshCw, X, Brain } from 'lucide-react';
 
 /**
  * Renders the Creative Target Personas (CTP) + their Hypothesis layer.
@@ -21,8 +22,11 @@ type CTP = {
   general_stance?: string;
   core_insight_general?: string;
   core_insight_product_anchored?: string;
-  pain_points?: Array<{ pain_point?: string; frequency?: number; sources?: string[] }>;
+  pain_points?: Array<{ pain_point?: string; frequency?: number; sources?: string[]; evidence_indexes?: number[] }>;
+  desires?: Array<string | { desire?: string; evidence_indexes?: number[] }>;
   barriers_objections?: Array<{ prompt?: string; type?: string; evidence?: string }>;
+  recommended_hooks?: Array<{ hook?: string; source?: string; rationale?: string }>;
+  recommended_value_props?: Array<{ value_prop?: string; source?: string; rationale?: string }>;
   kill_signals?: KillSignals;
   weight?: number;
   review_percentage?: number;
@@ -30,6 +34,20 @@ type CTP = {
   top_language_cues?: string[];
   source_distribution?: Record<string, number>;
   representative_snippets?: Array<{ content?: string; source_type?: string }>;
+  // Discovery-driven fields (v2)
+  archetype_psychology?: string;
+  behavioral_markers?: string[];
+  decision_factors?: Array<{ factor?: string; priority?: string; evidence?: string }>;
+  vocabulary?: string[];
+  counter_segment?: string;
+  what_makes_them_unique?: string;
+  stance_tags?: string[];
+  frameworks_that_resonate?: Array<{ framework?: string; rationale?: string }>;
+  tone_and_emotion_arc?: { primary_tone?: string; emotion_arc?: string; rationale?: string };
+  ad_creative_gap?: string;
+  anti_patterns?: string[];
+  evidence_quotes?: string[];
+  source?: string;
 };
 
 type Hypothesis = {
@@ -68,10 +86,14 @@ export default function CTPView({
   ctps,
   hypothesis,
   stats,
+  sessionId,
+  onRegenerated,
 }: {
   ctps: CTP[];
   hypothesis: Hypothesis[];
   stats: Stats;
+  sessionId?: number;
+  onRegenerated?: () => void;
 }) {
   if (!ctps || ctps.length === 0) {
     return (
@@ -120,7 +142,15 @@ export default function CTPView({
       {/* One card per CTP */}
       {ctps.map((ctp, i) => {
         const hypo = ctp.ctp_id ? hypoByCtp[ctp.ctp_id] : undefined;
-        return <CTPCard key={ctp.ctp_id || i} ctp={ctp} hypo={hypo} />;
+        return (
+          <CTPCard
+            key={ctp.ctp_id || i}
+            ctp={ctp}
+            hypo={hypo}
+            sessionId={sessionId}
+            onRegenerated={onRegenerated}
+          />
+        );
       })}
     </div>
   );
@@ -153,20 +183,59 @@ function StatCard({
   );
 }
 
-function CTPCard({ ctp, hypo }: { ctp: CTP; hypo?: Hypothesis }) {
+function CTPCard({
+  ctp,
+  hypo,
+  sessionId,
+  onRegenerated,
+}: {
+  ctp: CTP;
+  hypo?: Hypothesis;
+  sessionId?: number;
+  onRegenerated?: () => void;
+}) {
   const pain = ctp.pain_points || [];
+  const desires = ctp.desires || [];
   const barriers = ctp.barriers_objections || [];
+  const recommendedHooks = ctp.recommended_hooks || [];
+  const recommendedVPs = ctp.recommended_value_props || [];
   const kill = ctp.kill_signals || {};
   const cues = ctp.top_language_cues || [];
   const sourceDist = ctp.source_distribution || {};
   const sampleSnippets = (ctp.representative_snippets || []).slice(0, 3);
   const angles = hypo?.angles || [];
 
+  // Regenerate state
+  const [regenerating, setRegenerating] = useState(false);
+  const [regenError, setRegenError] = useState<string | null>(null);
+
+  const handleRegenerate = async () => {
+    if (!sessionId || !ctp.ctp_id) return;
+    setRegenerating(true);
+    setRegenError(null);
+    try {
+      const r = await fetch(`/api/research/session/${sessionId}/regenerate-ctp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ctp_id: ctp.ctp_id }),
+      });
+      if (!r.ok) {
+        const err = await r.text();
+        throw new Error(err || `HTTP ${r.status}`);
+      }
+      if (onRegenerated) onRegenerated();
+    } catch (e: any) {
+      setRegenError(e.message || 'Regeneration failed');
+    } finally {
+      setRegenerating(false);
+    }
+  };
+
   return (
     <div className="glass-card p-6 border-l-4 border-indigo-500">
-      {/* Header: name + stance + weight */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
+      {/* Header: name + stance + weight + regenerate */}
+      <div className="flex items-start justify-between mb-4 gap-4">
+        <div className="flex-1">
           <h3 className="text-xl font-semibold text-white flex items-center gap-2">
             <Users className="w-5 h-5 text-indigo-400" />
             {ctp.ctp_name || 'Untitled CTP'}
@@ -177,26 +246,75 @@ function CTPCard({ ctp, hypo }: { ctp: CTP; hypo?: Hypothesis }) {
                 {ctp.general_stance.replace(/_/g, ' ')}
               </span>
             )}
+            {ctp.stance_tags && ctp.stance_tags.length > 1 && ctp.stance_tags.slice(1).map((t, i) => (
+              <span key={i} className="tag bg-indigo-500/10 text-indigo-300/70">
+                +{t.replace(/_/g, ' ')}
+              </span>
+            ))}
             {ctp.ctp_id && <span className="tag bg-slate-700 text-slate-300">{ctp.ctp_id}</span>}
             {typeof ctp.snippet_count === 'number' && (
-              <span className="tag bg-slate-700 text-slate-300">
-                {ctp.snippet_count} snippets
-              </span>
+              <span className="tag bg-slate-700 text-slate-300">{ctp.snippet_count} snippets</span>
             )}
             {typeof ctp.review_percentage === 'number' && (
-              <span className="tag bg-slate-700 text-slate-300">
-                {ctp.review_percentage}% of reviews
-              </span>
+              <span className="tag bg-slate-700 text-slate-300">{ctp.review_percentage}% of reviews</span>
+            )}
+            {ctp.source === 'discovery' && (
+              <span className="tag bg-emerald-500/20 text-emerald-300">discovery</span>
             )}
           </div>
         </div>
-        {typeof ctp.weight === 'number' && (
-          <div className="flex flex-col items-center">
-            <div className="text-3xl font-bold text-indigo-400">{ctp.weight}</div>
-            <div className="text-xs text-slate-500">weight/10</div>
-          </div>
-        )}
+        <div className="flex items-start gap-3 shrink-0">
+          {typeof ctp.weight === 'number' && (
+            <div className="flex flex-col items-center">
+              <div className="text-3xl font-bold text-indigo-400">{ctp.weight}</div>
+              <div className="text-xs text-slate-500">weight/10</div>
+            </div>
+          )}
+          {sessionId && ctp.ctp_id && (
+            <button
+              onClick={handleRegenerate}
+              disabled={regenerating}
+              className="text-xs px-3 py-1.5 rounded-lg bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-slate-300 hover:text-white flex items-center gap-1.5"
+              title="Re-run deep enrichment for this CTP only (uses the existing snippets, no re-discovery)"
+            >
+              <RefreshCw className={`w-3 h-3 ${regenerating ? 'animate-spin' : ''}`} />
+              {regenerating ? 'Regenerating…' : 'Regenerate'}
+            </button>
+          )}
+        </div>
       </div>
+      {regenError && (
+        <div className="mb-3 px-3 py-2 rounded bg-red-500/10 border border-red-500/30 text-red-300 text-xs flex items-center gap-2">
+          <X className="w-4 h-4" /> {regenError}
+        </div>
+      )}
+
+      {/* Archetype psychology + uniqueness + counter-segment (discovery v2) */}
+      {(ctp.archetype_psychology || ctp.what_makes_them_unique || ctp.counter_segment) && (
+        <div className="space-y-2 mb-4">
+          {ctp.archetype_psychology && (
+            <div className="bg-slate-800/40 rounded-lg p-3 border-l-2 border-indigo-500/40">
+              <p className="text-xs text-indigo-400 mb-1 uppercase tracking-wider font-medium flex items-center gap-1">
+                <Brain className="w-3 h-3" /> Psychology
+              </p>
+              <p className="text-sm text-slate-300">{ctp.archetype_psychology}</p>
+            </div>
+          )}
+          {ctp.what_makes_them_unique && (
+            <div className="bg-amber-500/5 rounded-lg p-3 border-l-2 border-amber-500/40">
+              <p className="text-xs text-amber-400 mb-1 uppercase tracking-wider font-medium">
+                What makes them unique
+              </p>
+              <p className="text-sm text-slate-300">{ctp.what_makes_them_unique}</p>
+            </div>
+          )}
+          {ctp.counter_segment && (
+            <div className="text-xs text-slate-500">
+              <span className="text-slate-400">Not this segment:</span> {ctp.counter_segment}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Core insights */}
       {(ctp.core_insight_general || ctp.core_insight_product_anchored) && (
@@ -274,6 +392,221 @@ function CTPCard({ ctp, hypo }: { ctp: CTP; hypo?: Hypothesis }) {
           </div>
         )}
       </div>
+
+      {/* Desires + Behavioral Markers grid (discovery v2) */}
+      {(desires.length > 0 || (ctp.behavioral_markers && ctp.behavioral_markers.length > 0)) && (
+        <div className="grid md:grid-cols-2 gap-4 mb-4">
+          {desires.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-emerald-400 mb-2 flex items-center gap-1">
+                <Lightbulb className="w-4 h-4" /> Desires
+              </h4>
+              <ul className="space-y-1 text-sm text-slate-300">
+                {desires.slice(0, 6).map((d, i) => {
+                  const text = typeof d === 'string' ? d : d.desire || '';
+                  return (
+                    <li key={i} className="flex items-start gap-2">
+                      <span className="text-emerald-400 mt-0.5">+</span>
+                      <span>{text}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          {ctp.behavioral_markers && ctp.behavioral_markers.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-purple-400 mb-2 flex items-center gap-1">
+                <BookOpen className="w-4 h-4" /> Behavioral Markers
+              </h4>
+              <ul className="space-y-1 text-sm text-slate-300">
+                {ctp.behavioral_markers.slice(0, 6).map((b, i) => (
+                  <li key={i} className="flex items-start gap-2">
+                    <span className="text-purple-400 mt-0.5">·</span>
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Decision factors (discovery v2) */}
+      {ctp.decision_factors && ctp.decision_factors.length > 0 && (
+        <div className="mb-4">
+          <h4 className="text-sm font-semibold text-cyan-400 mb-2">Decision Factors</h4>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {ctp.decision_factors.slice(0, 6).map((d, i) => (
+              <div key={i} className="bg-slate-800/50 rounded-lg p-2 text-xs">
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-slate-200 font-medium">{d.factor}</span>
+                  {d.priority && (
+                    <span
+                      className={`tag text-[10px] ${
+                        d.priority === 'high'
+                          ? 'bg-red-500/20 text-red-300'
+                          : d.priority === 'medium'
+                          ? 'bg-amber-500/20 text-amber-300'
+                          : 'bg-slate-600/30 text-slate-400'
+                      }`}
+                    >
+                      {d.priority}
+                    </span>
+                  )}
+                </div>
+                {d.evidence && <p className="text-slate-500 text-[11px]">{d.evidence}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Recommended hooks + value props per-CTP (discovery v2) */}
+      {(recommendedHooks.length > 0 || recommendedVPs.length > 0) && (
+        <div className="grid md:grid-cols-2 gap-4 mb-4">
+          {recommendedHooks.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-pink-400 mb-2">Recommended Hooks</h4>
+              <ul className="space-y-2 text-sm text-slate-300">
+                {recommendedHooks.slice(0, 5).map((h, i) => (
+                  <li key={i} className="bg-slate-800/50 p-2 rounded-lg">
+                    <p className="text-slate-200">"{h.hook}"</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      {h.source && (
+                        <span
+                          className={`tag text-[10px] ${
+                            h.source === 'from_brand_library'
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-pink-500/20 text-pink-300'
+                          }`}
+                        >
+                          {h.source.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                      {h.rationale && <p className="text-[11px] text-slate-500">{h.rationale}</p>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {recommendedVPs.length > 0 && (
+            <div>
+              <h4 className="text-sm font-semibold text-blue-400 mb-2">Value Props</h4>
+              <ul className="space-y-2 text-sm text-slate-300">
+                {recommendedVPs.slice(0, 5).map((v, i) => (
+                  <li key={i} className="bg-slate-800/50 p-2 rounded-lg">
+                    <p className="text-slate-200">{v.value_prop}</p>
+                    <div className="flex items-center gap-2 mt-1">
+                      {v.source && (
+                        <span
+                          className={`tag text-[10px] ${
+                            v.source === 'from_brand_library'
+                              ? 'bg-emerald-500/20 text-emerald-300'
+                              : 'bg-blue-500/20 text-blue-300'
+                          }`}
+                        >
+                          {v.source.replace(/_/g, ' ')}
+                        </span>
+                      )}
+                      {v.rationale && <p className="text-[11px] text-slate-500">{v.rationale}</p>}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Vocabulary tags (discovery v2) */}
+      {ctp.vocabulary && ctp.vocabulary.length > 0 && (
+        <div className="mb-4">
+          <h4 className="text-xs text-slate-500 mb-2 uppercase tracking-wider">Their Vocabulary (verbatim)</h4>
+          <div className="flex flex-wrap gap-1">
+            {ctp.vocabulary.slice(0, 14).map((v, i) => (
+              <span key={i} className="tag bg-violet-500/15 text-violet-300 italic">
+                "{v}"
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Evidence quotes (discovery v2) — collapsible */}
+      {ctp.evidence_quotes && ctp.evidence_quotes.length > 0 && (
+        <details className="mb-4">
+          <summary className="text-sm font-semibold text-cyan-400 cursor-pointer flex items-center gap-1">
+            <Quote className="w-4 h-4" /> Evidence Quotes ({ctp.evidence_quotes.length})
+          </summary>
+          <div className="space-y-2 mt-2 pl-2">
+            {ctp.evidence_quotes.map((q, i) => (
+              <blockquote
+                key={i}
+                className="text-sm text-slate-300 italic border-l-2 border-cyan-500/40 pl-3"
+              >
+                "{q}"
+              </blockquote>
+            ))}
+          </div>
+        </details>
+      )}
+
+      {/* Frameworks that resonate (discovery v2) */}
+      {ctp.frameworks_that_resonate && ctp.frameworks_that_resonate.length > 0 && (
+        <div className="mb-4">
+          <h4 className="text-xs text-slate-500 mb-2 uppercase tracking-wider">Frameworks that resonate</h4>
+          <div className="space-y-1">
+            {ctp.frameworks_that_resonate.map((f, i) => (
+              <div key={i} className="text-sm">
+                <span className="text-amber-300 font-medium">{f.framework}</span>
+                {f.rationale && <span className="text-slate-500"> — {f.rationale}</span>}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Tone / emotion arc (discovery v2) */}
+      {ctp.tone_and_emotion_arc && (ctp.tone_and_emotion_arc.primary_tone || ctp.tone_and_emotion_arc.emotion_arc) && (
+        <div className="mb-4 grid sm:grid-cols-2 gap-2 text-xs">
+          {ctp.tone_and_emotion_arc.primary_tone && (
+            <div className="bg-slate-800/50 p-2 rounded">
+              <p className="text-slate-500">Tone</p>
+              <p className="text-slate-200 font-medium">{ctp.tone_and_emotion_arc.primary_tone}</p>
+            </div>
+          )}
+          {ctp.tone_and_emotion_arc.emotion_arc && (
+            <div className="bg-slate-800/50 p-2 rounded">
+              <p className="text-slate-500">Emotion Arc</p>
+              <p className="text-slate-200 font-medium">{ctp.tone_and_emotion_arc.emotion_arc}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Ad creative gap + anti-patterns (discovery v2) */}
+      {(ctp.ad_creative_gap || (ctp.anti_patterns && ctp.anti_patterns.length > 0)) && (
+        <div className="mb-4 space-y-2">
+          {ctp.ad_creative_gap && (
+            <div className="bg-rose-500/5 border-l-2 border-rose-500/40 pl-3 py-2 text-sm">
+              <span className="text-rose-400 font-medium text-xs uppercase">Creative gap: </span>
+              <span className="text-slate-300">{ctp.ad_creative_gap}</span>
+            </div>
+          )}
+          {ctp.anti_patterns && ctp.anti_patterns.length > 0 && (
+            <div className="text-xs text-slate-500 space-y-1">
+              <p className="text-slate-400 font-medium">Avoid:</p>
+              <ul className="pl-3 space-y-0.5">
+                {ctp.anti_patterns.map((a, i) => (
+                  <li key={i}>· {a}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Kill signals */}
       {(kill.existence?.length || kill.engagement?.length || kill.conversion?.length) ? (

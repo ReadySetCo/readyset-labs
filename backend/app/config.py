@@ -5,18 +5,23 @@ Loads environment variables and provides settings.
 
 from pydantic_settings import BaseSettings
 from typing import Optional
+from pathlib import Path
 import os
+
+# Absolute path to backend/ directory so the DB is found regardless of cwd
+_BACKEND_DIR = Path(__file__).resolve().parent.parent
+_DEFAULT_DB_URL = f"sqlite+aiosqlite:///{_BACKEND_DIR / 'database.db'}"
 
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
+
     # App settings
     APP_NAME: str = "Brand Intelligence Scraper"
     DEBUG: bool = True
-    
+
     # Database
-    DATABASE_URL: str = "sqlite+aiosqlite:///./database.db"
+    DATABASE_URL: str = _DEFAULT_DB_URL
     
     # OpenAI
     OPENAI_API_KEY: Optional[str] = None
@@ -29,6 +34,18 @@ class Settings(BaseSettings):
     
     # Default LLM provider: "openai" or "gemini"
     LLM_PROVIDER: str = "openai"
+
+    # Task-specific LLM routing
+    LLM_MODEL_STRATEGY: str = "gpt-5.4"
+    LLM_MODEL_CREATIVE: str = "gpt-5.4"
+    LLM_MODEL_CHAT: str = "gpt-5.4"
+    LLM_MODEL_CLASSIFIER: str = "gemini-2.5-flash"
+    LLM_MODEL_VISION: str = "models/gemini-3-flash-preview"
+    LLM_MODEL_VISION_FALLBACK: str = "gemini-2.5-flash"
+
+    # Legacy AnythingLLM sync is disabled by default. Chat now uses the direct
+    # long-context service over stored research data.
+    ENABLE_ANYTHINGLLM_SYNC: bool = False
     
     # Firecrawl
     FIRECRAWL_API_KEY: Optional[str] = None
@@ -75,6 +92,4 @@ settings = Settings()
 def get_settings() -> Settings:
     """Get application settings."""
     return settings
-
-
 

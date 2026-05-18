@@ -1,31 +1,7 @@
 # Docker Compose for Brand Intelligence Scraper
 # Usage: docker-compose up --build
 
-version: '3.8'
-
 services:
-  # AnythingLLM - RAG Chat Service
-  anythingllm:
-    image: mintplexlabs/anythingllm:latest
-    container_name: anythingllm
-    ports:
-      - "3001:3001"
-    environment:
-      - STORAGE_DIR=/app/server/storage
-      - JWT_SECRET=${ANYTHINGLLM_JWT_SECRET:-change-me-in-production}
-      - SERVER_PORT=3001
-      # Use host machine's OpenAI/Gemini keys (passed via env_file)
-    env_file:
-      - ./backend/.env
-    volumes:
-      - anythingllm_storage:/app/server/storage
-    restart: unless-stopped
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3001/api/ping"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
   # Backend API
   backend:
     build:
@@ -36,19 +12,17 @@ services:
     environment:
       # These can also be set in .env file
       - DATABASE_URL=sqlite+aiosqlite:///./data/database.db
-      # Point to AnythingLLM container
-      - ANYTHINGLLM_URL=http://anythingllm:3001
+      - ENABLE_ANYTHINGLLM_SYNC=false
+      - ANYTHINGLLM_API_KEY=
+      - ANYTHINGLLM_URL=
     env_file:
       - ./backend/.env
     volumes:
       # Persist database
       - backend_data:/app/data
-      # Share knowledge base with AnythingLLM
+      # Persist local knowledge exports
       - ./backend/knowledge_base:/app/knowledge_base
       - ./backend/knowledge_base_processed:/app/knowledge_base_processed
-    depends_on:
-      anythingllm:
-        condition: service_healthy
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -71,4 +45,3 @@ services:
 
 volumes:
   backend_data:
-  anythingllm_storage:

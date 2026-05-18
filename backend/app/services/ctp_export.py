@@ -280,11 +280,216 @@ def build_ctp_export(brand: Any, insight: Any, scraped_data: list = None) -> str
                 md += f"- {src}: {cnt}\n"
             md += "\n"
 
+        # ── Discovery v2 fields ──────────────────────────────────────────
+        psychology = ctp.get("archetype_psychology") or ctp.get("psychology", "")
+        if psychology:
+            md += f"### Archetype Psychology\n\n{psychology}\n\n"
+
+        unique = ctp.get("what_makes_them_unique", "")
+        if unique:
+            md += f"### What Makes Them Unique\n\n{unique}\n\n"
+
+        counter = ctp.get("counter_segment", "")
+        if counter:
+            md += f"**Counter-Segment:** {counter}\n\n"
+
+        markers = ctp.get("behavioral_markers", [])
+        if markers and isinstance(markers, list):
+            md += "### Behavioral Markers\n\n"
+            for m in markers:
+                md += f"- {m}\n"
+            md += "\n"
+
+        decision_factors = ctp.get("decision_factors", [])
+        if decision_factors and isinstance(decision_factors, list):
+            md += "### Decision Factors\n\n"
+            for df in decision_factors:
+                if isinstance(df, dict):
+                    factor = df.get("factor", str(df))
+                    priority = df.get("priority", "")
+                    evidence = df.get("evidence", "")
+                    prio_tag = f" [{priority}]" if priority else ""
+                    md += f"- **{factor}**{prio_tag}\n"
+                    if evidence:
+                        md += f"  - Evidence: {evidence}\n"
+                else:
+                    md += f"- {df}\n"
+            md += "\n"
+
+        vocabulary = ctp.get("vocabulary", [])
+        if vocabulary and isinstance(vocabulary, list):
+            md += "### Vocabulary (verbatim phrases from this cluster)\n\n"
+            md += ", ".join(f'"{v}"' for v in vocabulary) + "\n\n"
+
+        frameworks = ctp.get("frameworks_that_resonate", [])
+        if frameworks and isinstance(frameworks, list):
+            md += "### Frameworks That Resonate\n\n"
+            for fw in frameworks:
+                if isinstance(fw, dict):
+                    name = fw.get("framework", fw.get("name", str(fw)))
+                    rationale = fw.get("rationale", "")
+                    md += f"- **{name}**"
+                    if rationale:
+                        md += f" — {rationale}"
+                    md += "\n"
+                else:
+                    md += f"- {fw}\n"
+            md += "\n"
+
+        tone_arc = ctp.get("tone_and_emotion_arc", "")
+        if tone_arc:
+            md += f"### Tone & Emotion Arc\n\n{tone_arc}\n\n"
+
+        ad_gap = ctp.get("ad_creative_gap", "")
+        if ad_gap:
+            md += f"### Ad Creative Gap\n\n{ad_gap}\n\n"
+
+        anti_patterns = ctp.get("anti_patterns", [])
+        if anti_patterns and isinstance(anti_patterns, list):
+            md += "### Anti-Patterns (what repels this persona)\n\n"
+            for ap in anti_patterns:
+                md += f"- {ap}\n"
+            md += "\n"
+
+        evidence_quotes = ctp.get("evidence_quotes", [])
+        if evidence_quotes and isinstance(evidence_quotes, list):
+            md += "### Evidence Quotes\n\n"
+            for eq in evidence_quotes:
+                if isinstance(eq, dict):
+                    md += f'> "{eq.get("quote", str(eq))}"\n'
+                    src = eq.get("source", "")
+                    if src:
+                        md += f"> — *{src}*\n"
+                    md += "\n"
+                else:
+                    md += f'> "{eq}"\n\n'
+
+        # Recommended hooks & value props per CTP
+        rec_hooks = ctp.get("recommended_hooks", [])
+        if rec_hooks and isinstance(rec_hooks, list):
+            md += "### Recommended Hooks\n\n"
+            for h in rec_hooks:
+                if isinstance(h, dict):
+                    text = h.get("hook", h.get("text", str(h)))
+                    src_tag = h.get("source", "")
+                    tag_str = f" `{src_tag}`" if src_tag else ""
+                    md += f"- {text}{tag_str}\n"
+                else:
+                    md += f"- {h}\n"
+            md += "\n"
+
+        rec_vp = ctp.get("recommended_value_props", [])
+        if rec_vp and isinstance(rec_vp, list):
+            md += "### Recommended Value Props\n\n"
+            for vp in rec_vp:
+                if isinstance(vp, dict):
+                    text = vp.get("value_prop", vp.get("text", str(vp)))
+                    src_tag = vp.get("source", "")
+                    tag_str = f" `{src_tag}`" if src_tag else ""
+                    md += f"- {text}{tag_str}\n"
+                else:
+                    md += f"- {vp}\n"
+            md += "\n"
+
+        stance_tags = ctp.get("stance_tags", [])
+        if stance_tags and isinstance(stance_tags, list):
+            md += f"**Stance Tags:** {', '.join(stance_tags)}\n\n"
+
+        source_tag = ctp.get("source", "")
+        if source_tag:
+            md += f"**Source Path:** {source_tag}\n\n"
+
         md += "---\n\n"
+
+    # ── Target Personas (TOFU Prospects) ─────────────────────────────────
+    target_personas = getattr(insight, 'target_personas', None) or []
+    if target_personas:
+        md += _render_target_personas(target_personas)
+
+    # ── Community Dialect ────────────────────────────────────────────────
+    community_dialect = getattr(insight, 'community_dialect', None) or []
+    if community_dialect:
+        md += "## Community Dialect\n\n"
+        md += "Terms and phrases used by this brand's community:\n\n"
+        for term in community_dialect:
+            if isinstance(term, dict):
+                md += f"- **{term.get('term', str(term))}**: {term.get('context', '')}\n"
+            else:
+                md += f"- {term}\n"
+        md += "\n---\n\n"
 
     md += f"""*Generated by Brand Intelligence Scraper*
 *Export date: {datetime.now().strftime('%Y-%m-%d %H:%M')}*
 """
+    return md
+
+
+def _render_target_personas(target_personas: list) -> str:
+    """Render target personas section for markdown exports."""
+    md = "## Target Personas (TOFU Prospects)\n\n"
+    md += "> These are prospects who are NOT yet customers. Mapped to Eugene Schwartz awareness levels.\n\n"
+
+    for i, tp in enumerate(target_personas, 1):
+        if not isinstance(tp, dict):
+            continue
+        name = tp.get("name", f"Target Persona {i}")
+        awareness = tp.get("awareness_level", "Unknown")
+        problem = tp.get("the_problem_they_have", "")
+        why_not = tp.get("why_not_yet_a_customer", "")
+        workaround = tp.get("current_solution_or_workaround", "")
+        unlock = tp.get("what_would_unlock_them", "")
+        hook = tp.get("acquisition_hook", "")
+        format_rec = tp.get("creative_format_recommendation", "")
+        anti = tp.get("anti_pattern", "")
+        demo = tp.get("demographic_hypothesis", {})
+        difficulty = tp.get("estimated_acquisition_difficulty", "")
+        tam = tp.get("estimated_share_of_addressable_market", "")
+
+        md += f"### {i}. {name}\n\n"
+        md += f"**Awareness Level:** {awareness}\n"
+        if tam:
+            md += f"**Addressable Market:** {tam}\n"
+        if difficulty:
+            md += f"**Acquisition Difficulty:** {difficulty}\n"
+        md += "\n"
+
+        if problem:
+            md += f"**The Problem They Have:** {problem}\n\n"
+        if why_not:
+            md += f"**Why Not Yet a Customer:** {why_not}\n\n"
+        if workaround:
+            md += f"**Current Solution / Workaround:** {workaround}\n\n"
+        if unlock:
+            md += f"**What Would Unlock Them:** {unlock}\n\n"
+        if hook:
+            md += f"**Acquisition Hook:** \"{hook}\"\n\n"
+        if format_rec:
+            md += f"**Creative Format Recommendation:** {format_rec}\n\n"
+        if anti:
+            md += f"**Anti-Pattern:** {anti}\n\n"
+
+        if demo and isinstance(demo, dict):
+            md += "**Demographic Hypothesis:**\n"
+            for k, v in demo.items():
+                if v:
+                    label = k.replace("_", " ").title()
+                    if isinstance(v, list):
+                        v = ", ".join(str(x) for x in v)
+                    md += f"- {label}: {v}\n"
+            md += "\n"
+
+        # Evidence quotes for target persona
+        tp_quotes = tp.get("evidence_quotes", [])
+        if tp_quotes and isinstance(tp_quotes, list):
+            md += "**Evidence:**\n"
+            for eq in tp_quotes[:4]:
+                if isinstance(eq, dict):
+                    md += f'> "{eq.get("quote", str(eq))}"\n\n'
+                else:
+                    md += f'> "{eq}"\n\n'
+
+        md += "---\n\n"
+
     return md
 
 
@@ -448,6 +653,82 @@ def build_hypothesis_export(brand: Any, insight: Any, scraped_data: list = None)
             md += _build_ad_cross_reference(ctp, ad_library_data)
 
         md += "---\n\n"
+
+    # ── Target Personas (TOFU Prospects) ─────────────────────────────────
+    target_personas = getattr(insight, 'target_personas', None) or []
+    if target_personas:
+        md += _render_target_personas(target_personas)
+
+    # ── Funnel Strategy Summary ──────────────────────────────────────────
+    funnel_strategy = getattr(insight, 'funnel_strategy', None)
+    if funnel_strategy and isinstance(funnel_strategy, dict):
+        md += "## Full Funnel Creative Strategy\n\n"
+        diag = funnel_strategy.get("account_diagnosis", "")
+        if diag:
+            md += f"**Account Diagnosis:** {diag}\n\n"
+        persona_arch = funnel_strategy.get("persona_architecture", [])
+        if persona_arch and isinstance(persona_arch, list):
+            md += "### Persona Architecture\n\n"
+            for pa in persona_arch:
+                if isinstance(pa, dict):
+                    md += f"- **{pa.get('persona', pa.get('name', '?'))}**: {pa.get('role', pa.get('description', ''))}\n"
+                else:
+                    md += f"- {pa}\n"
+            md += "\n"
+        funnel_map = funnel_strategy.get("funnel_map", {})
+        if funnel_map and isinstance(funnel_map, dict):
+            md += "### Funnel Map\n\n"
+            for stage, details in funnel_map.items():
+                md += f"**{stage.replace('_', ' ').title()}:** "
+                if isinstance(details, str):
+                    md += f"{details}\n"
+                elif isinstance(details, dict):
+                    md += f"{json.dumps(details, ensure_ascii=False)}\n"
+                elif isinstance(details, list):
+                    md += f"{', '.join(str(d) for d in details)}\n"
+                else:
+                    md += f"{details}\n"
+            md += "\n"
+        briefs = funnel_strategy.get("first_briefs", funnel_strategy.get("priority_briefs", []))
+        if briefs and isinstance(briefs, list):
+            md += "### Priority Briefs\n\n"
+            for i, brief in enumerate(briefs[:5], 1):
+                if isinstance(brief, dict):
+                    md += f"{i}. **{brief.get('title', brief.get('name', f'Brief {i}'))}**\n"
+                    for k, v in brief.items():
+                        if k not in ('title', 'name') and v:
+                            md += f"   - {k.replace('_', ' ').title()}: {v}\n"
+                else:
+                    md += f"{i}. {brief}\n"
+            md += "\n"
+        roadmap = funnel_strategy.get("ninety_day_roadmap", funnel_strategy.get("roadmap", ""))
+        if roadmap:
+            md += "### 90-Day Roadmap\n\n"
+            if isinstance(roadmap, str):
+                md += f"{roadmap}\n\n"
+            elif isinstance(roadmap, list):
+                for item in roadmap:
+                    if isinstance(item, dict):
+                        md += f"- **{item.get('phase', item.get('week', '?'))}**: {item.get('focus', item.get('description', ''))}\n"
+                    else:
+                        md += f"- {item}\n"
+                md += "\n"
+        md += "---\n\n"
+
+    # ── A/B Test Suggestions ─────────────────────────────────────────────
+    ab_tests = getattr(insight, 'ab_test_suggestions', None) or []
+    if ab_tests and isinstance(ab_tests, list):
+        md += "## A/B Test Suggestions\n\n"
+        for i, test in enumerate(ab_tests, 1):
+            if isinstance(test, dict):
+                md += f"{i}. **{test.get('name', test.get('test', f'Test {i}'))}**\n"
+                for k, v in test.items():
+                    if k not in ('name', 'test') and v:
+                        label = k.replace('_', ' ').title()
+                        md += f"   - {label}: {v}\n"
+            else:
+                md += f"{i}. {test}\n"
+        md += "\n---\n\n"
 
     md += f"""*Generated by Brand Intelligence Scraper*
 *Export date: {datetime.now().strftime('%Y-%m-%d %H:%M')}*

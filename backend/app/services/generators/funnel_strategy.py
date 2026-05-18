@@ -39,7 +39,7 @@ class FunnelStrategyGenerator:
     """Generates full-funnel creative strategy from all research data."""
 
     def __init__(self):
-        self.llm = get_llm_client(provider="gemini")
+        self.llm = get_llm_client(task_type="strategy")
 
     async def generate_strategy(
         self,
@@ -183,7 +183,12 @@ Return this exact JSON:
 
         try:
             result = await asyncio.wait_for(
-                self.llm.complete_json(prompt=prompt, system_prompt=FUNNEL_STRATEGY_SYSTEM_PROMPT, temperature=0.7),
+                self.llm.complete_json(
+                    prompt=prompt,
+                    system_prompt=FUNNEL_STRATEGY_SYSTEM_PROMPT,
+                    temperature=0.7,
+                    max_tokens=16384,
+                ),
                 timeout=180.0
             )
             if result and isinstance(result, dict):

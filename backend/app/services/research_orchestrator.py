@@ -35,9 +35,9 @@ from .sentiment import classify_sentiment, get_sentiment_analyzer
 from .snippet_classifier import SnippetClassifier
 from .proto_icp_builder import ProtoICPBuilder, build_proto_icps
 from .stance_classifier import StanceClassifier
-from .ctp_builder import build_ctps
+from .ctp_builder import build_ctps, CTPBuilder
+from .brand_context import build_brand_context, render_context_block, build_discovery_corpus
 from .kb_exporter import get_kb_exporter
-from .anythingllm import sync_brand_to_workspace
 from .knowledge_synthesizer import get_knowledge_synthesizer
 from .brand_extractor import BrandExtractor, get_brand_extractor
 from .tiktok_trends import get_tiktok_trends_service
@@ -883,14 +883,17 @@ class ResearchOrchestrator:
                         vertical=brand.vertical or "",
                         existing_pain_points=insights.get("market_pain_points", []),
                         ad_library_data=ad_library_results.get("brand_ads") if ad_library_results else None,
-                        ad_creative_patterns=ad_library_results.get("patterns") if ad_library_results else None
+                        ad_creative_patterns=ad_library_results.get("patterns") if ad_library_results else None,
+                        brand=brand,
+                        insights_so_far=insights,
                     ),
                     timeout=3600.0  # 60 min — stance classification needs ~20s/batch × 93 batches
                 )
                 insights["ctp_data"] = ctp_result.get("ctps", [])
                 insights["ctp_hypothesis"] = ctp_result.get("hypothesis", [])
                 insights["ctp_stats"] = ctp_result.get("stats", {})
-                print(f"    [+] {len(ctp_result.get('ctps', []))} Creative Target Personas generated")
+                insights["target_personas"] = ctp_result.get("target_personas", [])
+                print(f"    [+] {len(ctp_result.get('ctps', []))} CTPs + {len(ctp_result.get('target_personas', []))} Target Personas generated")
             except asyncio.TimeoutError:
                 print("    [!] CTP generation timeout (exceeded 60 min), skipping")
                 insights["ctp_data"] = []
@@ -1128,6 +1131,27 @@ class ResearchOrchestrator:
                 print(f"    [DEBUG] First transcription sample: {str(first_trans.get('text', ''))[:100]}...")
             print(f"    [DEBUG] competitor_hooks: {ad_patterns.get('competitor_hooks', [])[:3]}")
             # === END DEBUG ===
+
+            # Generate Hooks Library BEFORE scripts so script generation can reuse the
+            # strongest data-backed hooks instead of falling back to legacy categories.
+            try:
+                hooks_service = get_hooks_library_service()
+                hooks_library = await asyncio.wait_for(
+                    hooks_service.generate_hooks_library(
+                        brand_info=brand_info,
+                        insights=insights,
+                        num_hooks=20
+                    ),
+                    timeout=180.0
+                )
+                insights["hooks_library"] = hooks_library
+                print(f"       -> {hooks_library.get('total_hooks', 0)} hooks in library")
+            except asyncio.TimeoutError:
+                print(f"       [!] Hooks Library timeout, skipping")
+                insights["hooks_library"] = {"status": "timeout"}
+            except Exception as e:
+                print(f"       [!] Hooks Library error: {str(e)[:80]}")
+                insights["hooks_library"] = {"status": "error", "error": str(e)[:100]}
             
             # Run all 3 generators in parallel
             async def gen_scripts():
@@ -1190,25 +1214,10 @@ class ResearchOrchestrator:
             insights["ab_test_suggestions"] = ab_tests if isinstance(ab_tests, list) else []
             print(f"       -> {len(scripts)} scripts, {len(thumbnails)} thumbnails, {len(ab_tests)} A/B tests")
             
-            # Generate Hooks Library (structured hooks for creative briefs)
-            try:
-                hooks_service = get_hooks_library_service()
-                hooks_library = await asyncio.wait_for(
-                    hooks_service.generate_hooks_library(
-                        brand_info=brand_info,
-                        insights=insights,
-                        num_hooks=20
-                    ),
-                    timeout=180.0
-                )
-                insights["hooks_library"] = hooks_library
-                print(f"       -> {hooks_library.get('total_hooks', 0)} hooks in library")
-            except asyncio.TimeoutError:
-                print(f"       [!] Hooks Library timeout, skipping")
-                insights["hooks_library"] = {"status": "timeout"}
-            except Exception as e:
-                print(f"       [!] Hooks Library error: {str(e)[:80]}")
-                insights["hooks_library"] = {"status": "error", "error": str(e)[:100]}
+            # Hooks Library is generated before scripts above. Keep a lightweight
+            # guard here so older control flow still leaves the field present.
+            if not insights.get("hooks_library"):
+                insights["hooks_library"] = {"status": "missing"}
             
             # Generate UGC Creator Briefs, Funnel Strategy, and Post-Purchase Survey in parallel
             async def gen_ugc_briefs():
@@ -1291,9 +1300,14 @@ class ResearchOrchestrator:
                 'hooks_library',            # Structured hooks library for creative briefs
                 'instagram_brand_presence', # Brand voice, content pillars, archetype
                 'ctp_data', 'ctp_hypothesis', 'ctp_stats',  # Creative Target Personas
+                'target_personas',         # TOFU prospects (Schwartz awareness)
                 'ugc_briefs',              # UGC creator briefs
                 'funnel_strategy',         # Full funnel creative strategy
-                'post_purchase_survey'     # Post-purchase survey questions
+                'post_purchase_survey',    # Post-purchase survey questions
+                'failed_solution_angles',  # P0.1 — angles from competing failed solutions
+                'transformation_angles',   # P0.1 — before/after transformation angles
+                'weak_signals',            # P0.1 — low-frequency high-potential angles
+                'community_dialect',       # P0.1 — slang/insider language by community
             }
             filtered_insights = {k: v for k, v in sanitized_insights.items() if k in valid_insight_fields}
             
@@ -1352,14 +1366,18 @@ class ResearchOrchestrator:
                 else:
                     self._log("Skipping Knowledge Synthesizer (using raw docs for RAG)", source="Synthesizer")
                 
-                # Sync RAW documents to AnythingLLM workspace
-                self._log(f"Syncing RAW documents to AnythingLLM workspace '{brand.name}'...", source="AnythingLLM")
-                self._log("Uploading raw markdown files (reddit, trustpilot, etc) for RAG chat...", source="AnythingLLM")
-                sync_result = await sync_brand_to_workspace(brand.name)  # Uses knowledge_base/ by default
-                if sync_result.get('success'):
-                    self._log(f"AnythingLLM sync complete: {sync_result.get('documents_uploaded', 0)} docs uploaded, workspace '{sync_result.get('workspace_slug')}' ready for chat", source="AnythingLLM")
+                if settings.ENABLE_ANYTHINGLLM_SYNC:
+                    from .anythingllm import sync_brand_to_workspace
+
+                    self._log(f"Syncing RAW documents to AnythingLLM workspace '{brand.name}'...", source="AnythingLLM")
+                    self._log("Uploading raw markdown files (reddit, trustpilot, etc) for legacy RAG chat...", source="AnythingLLM")
+                    sync_result = await sync_brand_to_workspace(brand.name)  # Uses knowledge_base/ by default
+                    if sync_result.get('success'):
+                        self._log(f"AnythingLLM sync complete: {sync_result.get('documents_uploaded', 0)} docs uploaded, workspace '{sync_result.get('workspace_slug')}' ready for chat", source="AnythingLLM")
+                    else:
+                        self._log(f"AnythingLLM sync partial (some docs may not be indexed): {sync_result.get('errors', [])}", level="warning", source="AnythingLLM")
                 else:
-                    self._log(f"AnythingLLM sync partial (some docs may not be indexed): {sync_result.get('errors', [])}", level="warning", source="AnythingLLM")
+                    self._log("Skipping AnythingLLM sync (disabled; chat uses direct long-context research data)", source="AnythingLLM")
             except Exception as kb_err:
                 self._log(f"Knowledge base export/sync failed (non-critical, data is still in DB): {kb_err}", level="warning", source="KB Export")
             
@@ -1542,14 +1560,17 @@ class ResearchOrchestrator:
                         vertical=brand.vertical or "",
                         existing_pain_points=insights.get("market_pain_points", []),
                         ad_library_data=None,
-                        ad_creative_patterns=None
+                        ad_creative_patterns=None,
+                        brand=brand,
+                        insights_so_far=insights,
                     ),
                     timeout=3600.0  # 60 min — stance classification needs ~20s/batch × 93 batches
                 )
                 insights["ctp_data"] = ctp_result.get("ctps", [])
                 insights["ctp_hypothesis"] = ctp_result.get("hypothesis", [])
                 insights["ctp_stats"] = ctp_result.get("stats", {})
-                print(f"    [+] {len(ctp_result.get('ctps', []))} Creative Target Personas generated")
+                insights["target_personas"] = ctp_result.get("target_personas", [])
+                print(f"    [+] {len(ctp_result.get('ctps', []))} CTPs + {len(ctp_result.get('target_personas', []))} Target Personas generated")
             except Exception as e:
                 import traceback
                 print(f"    [!] CTP generation error: {type(e).__name__}: {str(e)[:200]}")
@@ -1557,6 +1578,46 @@ class ResearchOrchestrator:
                 insights["ctp_data"] = []
                 insights["ctp_hypothesis"] = []
                 insights["ctp_stats"] = {}
+
+            # Preserve existing ad library data before generator steps need it.
+            existing_result = await self.db.execute(
+                select(Insight).where(Insight.session_id == session_id)
+            )
+            existing_insight = existing_result.scalar_one_or_none()
+
+            preserved_ad_data = {}
+            if existing_insight:
+                preserved_ad_data = {
+                    "ad_library_data": existing_insight.ad_library_data,
+                    "competitor_ads_data": existing_insight.competitor_ads_data,
+                    "ad_creative_patterns": existing_insight.ad_creative_patterns,
+                    "landing_page_analysis": existing_insight.landing_page_analysis,
+                    "competitor_profiles": existing_insight.competitor_profiles,
+                    "competitive_matrix": existing_insight.competitive_matrix,
+                    "swot_analysis": existing_insight.swot_analysis,
+                }
+
+            ad_patterns = preserved_ad_data.get("ad_creative_patterns") if isinstance(preserved_ad_data.get("ad_creative_patterns"), dict) else {}
+
+            # Generate Hooks Library BEFORE scripts so regenerated scripts can reuse it.
+            try:
+                hooks_service = get_hooks_library_service()
+                hooks_library = await asyncio.wait_for(
+                    hooks_service.generate_hooks_library(
+                        brand_info=brand_info,
+                        insights=insights,
+                        num_hooks=20
+                    ),
+                    timeout=180.0
+                )
+                insights["hooks_library"] = hooks_library
+                print(f"    [+] {hooks_library.get('total_hooks', 0)} hooks in library")
+            except asyncio.TimeoutError:
+                print("    [!] Hooks Library timeout, skipping")
+                insights["hooks_library"] = {"status": "timeout"}
+            except Exception as e:
+                print(f"    [!] Hooks Library error: {str(e)[:80]}")
+                insights["hooks_library"] = {"status": "error", "error": str(e)[:100]}
 
             # =============================================
             # STEP 4: Run content generators in parallel
@@ -1566,7 +1627,7 @@ class ResearchOrchestrator:
             async def gen_scripts():
                 try:
                     return await self.script_generator.generate_scripts(
-                        brand_info=brand_info, ad_patterns={}, insights=insights, num_scripts=5
+                        brand_info=brand_info, ad_patterns=ad_patterns, insights=insights, num_scripts=5
                     )
                 except Exception as e:
                     print(f"       [!] Scripts error: {e}")
@@ -1575,7 +1636,7 @@ class ResearchOrchestrator:
             async def gen_thumbnails():
                 try:
                     return await self.thumbnail_suggester.suggest_thumbnails(
-                        brand_info=brand_info, ad_patterns={}, insights=insights, num_suggestions=5
+                        brand_info=brand_info, ad_patterns=ad_patterns, insights=insights, num_suggestions=5
                     )
                 except Exception as e:
                     print(f"       [!] Thumbnails error: {e}")
@@ -1584,8 +1645,8 @@ class ResearchOrchestrator:
             async def gen_ab_tests():
                 try:
                     return await self.ab_test_suggester.suggest_tests(
-                        brand_info=brand_info, ad_patterns={}, insights=insights,
-                        competitor_data={}, num_tests=5
+                        brand_info=brand_info, ad_patterns=ad_patterns, insights=insights,
+                        competitor_data=preserved_ad_data, num_tests=5
                     )
                 except Exception as e:
                     print(f"       [!] A/B tests error: {e}")
@@ -1604,10 +1665,6 @@ class ResearchOrchestrator:
             # STEP 4b: Run the three newer generators (UGC briefs, Funnel Strategy, Survey)
             # These were missing from reprocess_insights() even though they exist in run_full_research.
             # =============================================
-            ad_patterns = {}
-            if isinstance(preserved_ad_data.get("ad_creative_patterns"), dict):
-                ad_patterns = preserved_ad_data["ad_creative_patterns"]
-
             async def gen_ugc_briefs_rp():
                 try:
                     return await self.ugc_brief_generator.generate_briefs(
@@ -1669,24 +1726,6 @@ class ResearchOrchestrator:
                 brand, insights, {}, {}
             )
             
-            # Preserve ad library data from existing insight before deleting
-            existing_result = await self.db.execute(
-                select(Insight).where(Insight.session_id == session_id)
-            )
-            existing_insight = existing_result.scalar_one_or_none()
-            
-            preserved_ad_data = {}
-            if existing_insight:
-                preserved_ad_data = {
-                    "ad_library_data": existing_insight.ad_library_data,
-                    "competitor_ads_data": existing_insight.competitor_ads_data,
-                    "ad_creative_patterns": existing_insight.ad_creative_patterns,
-                    "landing_page_analysis": existing_insight.landing_page_analysis,
-                    "competitor_profiles": existing_insight.competitor_profiles,
-                    "competitive_matrix": existing_insight.competitive_matrix,
-                    "swot_analysis": existing_insight.swot_analysis,
-                }
-            
             # Delete old insights
             await self.db.execute(
                 delete(Insight).where(Insight.session_id == session_id)
@@ -1745,6 +1784,7 @@ class ResearchOrchestrator:
                 generated_scripts=insights.get("generated_scripts"),
                 thumbnail_suggestions=insights.get("thumbnail_suggestions"),
                 ab_test_suggestions=insights.get("ab_test_suggestions"),
+                hooks_library=insights.get("hooks_library"),
                 # Raw data summary
                 data_summary=insights.get("data_summary"),
                 top_quotes=insights.get("top_quotes"),
@@ -1758,10 +1798,15 @@ class ResearchOrchestrator:
                 ctp_data=insights.get("ctp_data"),
                 ctp_hypothesis=insights.get("ctp_hypothesis"),
                 ctp_stats=insights.get("ctp_stats"),
+                target_personas=insights.get("target_personas"),
                 # New generators (Fase 3): UGC briefs / Funnel strategy / Post-purchase survey
                 ugc_briefs=insights.get("ugc_briefs"),
                 funnel_strategy=insights.get("funnel_strategy"),
                 post_purchase_survey=insights.get("post_purchase_survey"),
+                failed_solution_angles=insights.get("failed_solution_angles"),
+                transformation_angles=insights.get("transformation_angles"),
+                weak_signals=insights.get("weak_signals"),
+                community_dialect=insights.get("community_dialect"),
                 full_report=insights.get("full_report"),
                 created_at=datetime.now()
             )
@@ -1800,14 +1845,18 @@ class ResearchOrchestrator:
                 else:
                     self._log("Skipping Knowledge Synthesizer (using raw docs for RAG)", source="Synthesizer")
                 
-                # Sync RAW documents to AnythingLLM workspace
-                self._log(f"Syncing RAW documents to AnythingLLM workspace '{brand.name}'...", source="AnythingLLM")
-                self._log("Uploading raw markdown files (reddit, trustpilot, etc) for RAG chat...", source="AnythingLLM")
-                sync_result = await sync_brand_to_workspace(brand.name)  # Uses knowledge_base/ by default
-                if sync_result.get('success'):
-                    self._log(f"AnythingLLM sync complete: {sync_result.get('documents_uploaded', 0)} docs uploaded, workspace '{sync_result.get('workspace_slug')}' ready for chat", source="AnythingLLM")
+                if settings.ENABLE_ANYTHINGLLM_SYNC:
+                    from .anythingllm import sync_brand_to_workspace
+
+                    self._log(f"Syncing RAW documents to AnythingLLM workspace '{brand.name}'...", source="AnythingLLM")
+                    self._log("Uploading raw markdown files (reddit, trustpilot, etc) for legacy RAG chat...", source="AnythingLLM")
+                    sync_result = await sync_brand_to_workspace(brand.name)  # Uses knowledge_base/ by default
+                    if sync_result.get('success'):
+                        self._log(f"AnythingLLM sync complete: {sync_result.get('documents_uploaded', 0)} docs uploaded, workspace '{sync_result.get('workspace_slug')}' ready for chat", source="AnythingLLM")
+                    else:
+                        self._log(f"AnythingLLM sync partial (some docs may not be indexed): {sync_result.get('errors', [])}", level="warning", source="AnythingLLM")
                 else:
-                    self._log(f"AnythingLLM sync partial (some docs may not be indexed): {sync_result.get('errors', [])}", level="warning", source="AnythingLLM")
+                    self._log("Skipping AnythingLLM sync (disabled; chat uses direct long-context research data)", source="AnythingLLM")
             except Exception as kb_err:
                 self._log(f"Knowledge base export/sync failed (non-critical, data is still in DB): {kb_err}", level="warning", source="KB Export")
             
@@ -4259,8 +4308,10 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
             report += f"**Hypothesis:** {test.get('hypothesis', '')}\n\n"
             control = test.get('control', {})
             variant = test.get('variant', {})
-            report += f"- **Control:** {control.get('description', 'N/A')}\n"
-            report += f"- **Variant:** {variant.get('description', 'N/A')}\n"
+            control_text = control.get('description', 'N/A') if isinstance(control, dict) else str(control or 'N/A')
+            variant_text = variant.get('description', 'N/A') if isinstance(variant, dict) else str(variant or 'N/A')
+            report += f"- **Control:** {control_text}\n"
+            report += f"- **Variant:** {variant_text}\n"
             report += f"- **Expected Impact:** {test.get('expected_impact', 'N/A')}\n\n"
         
         report += "\n---\n\n*Report generated by Brand Intelligence v2*\n"
@@ -4314,6 +4365,7 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
                 continue
             
             snippets_to_classify.append({
+                "id": item.id,
                 "content": content[:500],  # Truncate long content
                 "source_type": item.source_type,
                 "source_url": item.source_url or "",
@@ -4330,6 +4382,33 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
         
         successful = sum(1 for s in classified_snippets if s.get("classification"))
         self._log(f"[Proto-ICP] Successfully classified {successful}/{len(classified_snippets)} snippets")
+
+        # Persist intake-engine tags so downstream CTP endpoints and exports read
+        # the same trigger/blocker/outcome data the in-memory Proto-ICP builder used.
+        items_by_id = {item.id: item for item in scraped_items}
+        updated = 0
+        for classified in classified_snippets:
+            snippet_id = classified.get("id")
+            item = items_by_id.get(snippet_id)
+            if not item:
+                continue
+
+            classification = classified.get("classification") if isinstance(classified.get("classification"), dict) else classified
+            if not isinstance(classification, dict):
+                continue
+
+            item.primary_trigger = classification.get("primary_trigger") or classified.get("primary_trigger") or item.primary_trigger
+            item.blocker_type = classification.get("blocker_type") or classified.get("blocker_type") or item.blocker_type
+            item.desired_outcome_level = classification.get("desired_outcome_level") or classified.get("desired_outcome_level") or item.desired_outcome_level
+            item.proof_type_trusted = classification.get("proof_type_trusted") or classified.get("proof_type_trusted") or item.proof_type_trusted
+            item.language_cues = classification.get("language_cues") or classified.get("language_cues") or item.language_cues
+            item.language = classification.get("language") or classified.get("language") or item.language
+            item.classification_confidence = classification.get("confidence") or classified.get("confidence") or item.classification_confidence
+            updated += 1
+
+        if updated:
+            await self.db.commit()
+        self._log(f"[Proto-ICP] Persisted intake tags for {updated} snippets")
         
         # Step 4: Build Proto-ICP clusters
         proto_icp_result = build_proto_icps(classified_snippets, brand_name)
@@ -4351,7 +4430,9 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
         vertical: str = "",
         existing_pain_points: List[str] = None,
         ad_library_data: Any = None,
-        ad_creative_patterns: Any = None
+        ad_creative_patterns: Any = None,
+        brand: Any = None,
+        insights_so_far: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """
         Generate Creative Target Personas (CTPs) from VoC data.
@@ -4375,6 +4456,17 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
             Dict with ctps, hypothesis, and stats
         """
         self._log(f"[CTP] Starting Creative Target Persona generation for {brand_name}")
+
+        # Step 0: Build the brand_context block that grounds every LLM prompt.
+        # Without this, the stance classifier and CTP refiner fall back to a
+        # generic, category-agnostic interpretation — which is what produced the
+        # repeated "The Skeptic" / "The Bio-Hacker" cross-brand outputs.
+        if brand is None:
+            brand_row = await self.db.execute(
+                select(Brand).join(ResearchSession, ResearchSession.brand_id == Brand.id)
+                .where(ResearchSession.id == session_id)
+            )
+            brand = brand_row.scalar_one_or_none()
 
         # Step 1: Collect VoC snippets from database
         voc_source_types = [
@@ -4420,6 +4512,31 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
                 "context": item.title or brand_name
             })
 
+        # Build the brand-context block ONCE so it can be shared across
+        # stance classification and per-CTP refinement. Pulls from brand DNA,
+        # already-derived insights (pain_points, value_props, customer_language,
+        # competitor_analysis, etc.), per-source voice, and ad-library analyzer.
+        brand_context_dict = build_brand_context(
+            brand=brand,
+            insights_so_far=insights_so_far,
+            snippets=snippets_for_stance,
+            ad_library_data=ad_library_data,
+            ad_creative_patterns=ad_creative_patterns,
+        )
+        brand_context_block = render_context_block(brand_context_dict)
+        self._log(
+            f"[CTP] Built brand_context: {len(brand_context_block)} chars, "
+            f"per_source={[e['source_type'] for e in brand_context_dict['per_source']]}"
+        )
+
+        # Build the discovery corpus — a richer package than brand_context_block,
+        # including the FULL enumerated snippets and per-ad analyzer output.
+        # This is what the discovery LLM call reads (single shot, ~50-80K tokens).
+        # Built AFTER stance classification so each snippet carries its stance
+        # tags into the corpus as one signal among many (not as a structural
+        # constraint — the discovery prompt is free to find archetypes that
+        # span/split stances).
+
         self._log(f"[CTP] Classifying {len(snippets_for_stance)} snippets by stance...")
 
         # Step 3: Run stance classification (parallel batches).
@@ -4429,7 +4546,8 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
             stance_classified = await self.stance_classifier.classify_batch(
                 snippets_for_stance,
                 batch_size=10,
-                concurrency=5
+                concurrency=5,
+                brand_context_block=brand_context_block,
             )
         except Exception as e:
             import traceback
@@ -4459,7 +4577,47 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
         await self.db.commit()
         self._log(f"[CTP] Updated {updated} snippets with stance labels in database")
 
-        # Step 5: Build CTPs and hypothesis layer
+        # Step 5: Build CTPs and hypothesis layer.
+        # Pull hook/value-prop pools from insights_so_far so the LLM can SELECT
+        # from existing brand assets (tagged "from_brand_library") and propose
+        # new ones (tagged "new_for_this_ctp") per-CTP — replacing the previous
+        # global-top-3 reuse pattern.
+        hook_pool: List[str] = []
+        value_props_pool: List[str] = []
+        if isinstance(insights_so_far, dict):
+            for v in insights_so_far.get("recommended_hooks") or []:
+                if v and str(v) not in hook_pool:
+                    hook_pool.append(str(v))
+            hl = insights_so_far.get("hooks_library")
+            if isinstance(hl, list):
+                for v in hl:
+                    if v and str(v) not in hook_pool:
+                        hook_pool.append(str(v))
+            elif isinstance(hl, dict):
+                # hooks_library can be {"hooks": [...], "total_hooks": N, ...}
+                for v in hl.get("hooks") or []:
+                    if v and str(v) not in hook_pool:
+                        hook_pool.append(str(v))
+            for v in insights_so_far.get("value_props") or []:
+                if v and str(v) not in value_props_pool:
+                    value_props_pool.append(str(v))
+
+        # Now that snippets have stance tags, build the discovery corpus.
+        discovery_corpus = build_discovery_corpus(
+            brand=brand,
+            insights_so_far=insights_so_far,
+            snippets=stance_classified,
+            ad_library_data=ad_library_data,
+            ad_creative_patterns=ad_creative_patterns,
+        )
+        meta = discovery_corpus.get("meta", {})
+        self._log(
+            f"[CTP] Discovery corpus: {meta.get('snippet_count')} snippets, "
+            f"{meta.get('ad_count')} ads, "
+            f"~{meta.get('approx_input_chars', 0) // 4} input tokens, "
+            f"sources={list(meta.get('source_distribution', {}).keys())}"
+        )
+
         ctp_result = await build_ctps(
             classified_snippets=stance_classified,
             brand_name=brand_name,
@@ -4467,8 +4625,46 @@ Generated: {datetime.now().strftime('%Y-%m-%d %H:%M')}
             vertical=vertical,
             existing_pain_points=existing_pain_points,
             ad_library_data=ad_library_data,
-            ad_creative_patterns=ad_creative_patterns
+            ad_creative_patterns=ad_creative_patterns,
+            brand_context_block=brand_context_block,
+            hook_pool=hook_pool,
+            value_props_pool=value_props_pool,
+            corpus=discovery_corpus,
         )
+
+        path_used = ctp_result.get("stats", {}).get("path", "unknown")
+        self._log(f"[CTP] CTP construction path: {path_used}")
+
+        # ── Target Persona Discovery ─────────────────────────────────────
+        # CTPs above are CUSTOMER personas (people already engaged with the
+        # brand). Now run a SECOND discovery pass to surface TARGET PERSONAS:
+        # prospects who experience the category problem but aren't customers
+        # yet (Schwartz Unaware / Problem-Aware / Solution-Aware). Reuses the
+        # same corpus — the prompt is the lens, not the data.
+        try:
+            target_personas_builder = CTPBuilder()
+            target_personas = await asyncio.wait_for(
+                target_personas_builder.discover_target_personas(
+                    corpus=discovery_corpus,
+                    brand_name=brand_name,
+                    existing_ctps=ctp_result.get("ctps", []),
+                ),
+                timeout=300.0,
+            )
+            ctp_result["target_personas"] = target_personas
+            if target_personas:
+                self._log(f"[TargetPersonas] Discovered {len(target_personas)} prospects:")
+                for tp in target_personas:
+                    self._log(
+                        f"  • [{tp.get('awareness_level')}] {tp.get('name')} "
+                        f"— {tp.get('estimated_acquisition_difficulty', '?')} difficulty"
+                    )
+        except asyncio.TimeoutError:
+            self._log("[TargetPersonas] TIMEOUT, skipping prospect discovery")
+            ctp_result["target_personas"] = []
+        except Exception as e:
+            self._log(f"[TargetPersonas] FAILED: {type(e).__name__}: {str(e)[:120]}")
+            ctp_result["target_personas"] = []
 
         self._log(f"[CTP] Generated {ctp_result['stats']['total_ctps']} CTPs")
 
