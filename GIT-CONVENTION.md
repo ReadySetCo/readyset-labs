@@ -8,3 +8,5 @@ Local repo only (no remote). Rules for BOTH chats:
 3. Never rewrite history (no amend/rebase on existing commits) — the other chat may have read them.
 4. The file is ~5K lines; prefer surgical edits and re-read the region you touch before editing (the other chat may have moved it).
 5. Shared state notes still go to `Clients/Stately/STATELY-WORKING-DOC.md` (Stately) — git is for code history, the doc is for meaning.
+
+6. **Sync con Labs (desde 2026-09-07):** este repo vive también como carpeta `strategy-os/` dentro de `ReadySetCo/readyset-labs` (main), a pedido de Fede. El working copy del día a día sigue siendo ESTA carpeta local; al cierre de cada tanda de trabajo, el chat que cerró sincroniza a Labs: en el clone `Work/readyset-labs/`, `git fetch sos && git merge -X subtree=strategy-os/ sos/main && git push`. El remote `sos` apunta a esta carpeta local.
