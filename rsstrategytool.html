@@ -176,6 +176,22 @@ body.print-single .brief.print-target{display:block;}
 .alert{display:flex; gap:10px; padding:9px 13px; border-radius:9px; margin-bottom:7px; font-size:12.5px; align-items:baseline;}
 .alert.warn{background:var(--warn-soft);}
 .alert.bad{background:var(--bad-soft);}
+/* ── roadmap thesis + plan (step 2) ── */
+.thesis{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 10%,var(--card)),var(--card));}
+.thesis .tin{width:100%; border:none; background:none; color:var(--ink); font:inherit; font-size:19px; font-weight:800; padding:0; outline:none;}
+.thesis .tin::placeholder{color:var(--ink3); font-weight:700;}
+.thesis .sin{width:100%; border:none; background:none; color:var(--ink2); font:inherit; font-size:13.5px; padding:0; outline:none; resize:vertical; min-height:38px;}
+.arrowrow{display:grid; grid-template-columns:1fr auto 1fr; gap:10px; align-items:center; margin-top:10px;}
+.arrowrow input{width:100%; border:1px solid var(--line2); background:var(--card2); color:var(--ink); border-radius:9px; padding:7px 10px; font:inherit; font-size:12.5px;}
+.plan{padding-top:12px; padding-bottom:12px;}
+.planrow{display:flex; gap:12px; align-items:flex-end; flex-wrap:wrap;}
+.pf{flex:0 0 auto; min-width:120px;}
+.pf label{display:block; font-size:10.5px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--ink3); margin-bottom:3px;}
+.pf input{width:100%; border:1px solid var(--line2); background:var(--card2); color:var(--ink); border-radius:9px; padding:6px 9px; font:inherit; font-size:12.5px;}
+.pcap{flex:1; min-width:220px;}
+.capnum{font-size:19px; font-weight:800; line-height:1.1;}
+.capnum span{font-size:13px; font-weight:600; color:var(--ink3);}
+.capnum.bad{color:var(--bad);} .capnum.good{color:var(--good);}
 /* ── roadmap composer (from roadmap-lab, step 1) ── */
 .tk.act,.ph.act{outline:2px solid var(--accent); outline-offset:2px;}
 .ph{cursor:pointer;}
@@ -1728,7 +1744,52 @@ function conceptNumbers(lanes){
 }
 
 /* ═══════════ stubs — replaced by the next integration steps (lab §6.6) ═══════════ */
-function vThesis(opts){return '';}          /* step 2: thesis + period + contracted capacity */
+/* ═══════════ THESIS + PERIOD + CONTRACT (lab it1/it5/it6/it8b) ═══════════
+   The thesis stays editable after consolidating (setTh writes both copies). */
+function vThesis(opts){
+  opts=opts||{};
+  const t=RM().thesis;
+  return `<div class="card thesis"><div class="card-b">
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+      <span class="hint" style="font-weight:700;letter-spacing:.06em;text-transform:uppercase">The roadmap thesis</span>
+      <span class="hint">— one reigning hypothesis that every swimlane serves</span></div>
+    <input class="tin" placeholder="Name this roadmap’s bet — e.g. “Own the level-up moment”" value="${esc(t.title)}" oninput="setTh('title',this.value)">
+    <textarea class="sin" placeholder="Why this bet, now? What did the last period teach that makes this the next question to ask?" oninput="setTh('text',this.value)">${esc(t.text)}</textarea>
+    <div class="arrowrow">
+      <input placeholder="Coming from — what we already know" value="${esc(t.from)}" oninput="setTh('from',this.value)">
+      <span style="color:var(--ink3);font-size:16px">→</span>
+      <input placeholder="Going to — what we’ll know after this period" value="${esc(t.to)}" oninput="setTh('to',this.value)">
+    </div></div></div>`+(opts.noPlan?'':vPlan());
+}
+/* planned vs contracted, visible while composing instead of at delivery time.
+   perMonth is per brand and MANUAL until the HubSpot deal property is wired (§6.3.5):
+   no number = "no data", never a silent default. */
+function vPlan(){
+  const lanes=((B.draft||B.roadmap||{}).lanes)||[];
+  const pl=plannedConcepts(lanes), cap=rmCapacity();
+  const over=cap!=null&&pl>cap, left=cap!=null?cap-pl:null;
+  const pct=cap?Math.min(100,Math.round(pl/cap*100)):0;
+  return `<div class="card"><div class="card-b plan">
+    <div class="planrow">
+      <div class="pf"><label>Starts</label>
+        <input type="date" value="${esc(RM().period.start)}" onchange="rmSetPer('start',this.value)"></div>
+      <div class="pf" style="max-width:92px"><label>Weeks</label>
+        <input type="number" min="1" max="52" value="${perWeeks()}" title="How many weeks this roadmap covers. Contracted capacity is pro-rated from the monthly figure." onchange="rmSetPer('weeks',this.value)"></div>
+      <div class="pf" style="max-width:126px"><label>Concepts / month</label>
+        <input type="number" min="0" value="${perMonth()==null?'':perMonth()}" placeholder="no data" title="Contracted concepts per month for ${esc(B.name)}. HubSpot wiring pending — set it manually; clearing it returns to “no data”." onchange="rmSetContract(this.value)"></div>
+      <div class="pcap">
+        ${cap!=null?`<div class="capnum ${over?'bad':pl===cap?'good':''}">${pl} <span>of ${cap}</span></div>
+        <div class="bar" style="width:100%;height:8px;margin-top:3px;border-radius:4px;background:var(--card2);overflow:hidden"><i style="display:block;height:100%;width:${pct}%;background:${over?'var(--bad)':pl===cap?'var(--good)':'var(--accent)'}"></i></div>
+        <div class="hint" style="margin-top:3px">${over?`<b style="color:var(--bad)">${pl-cap} concept${pl-cap===1?'':'s'} over contract</b> — cut a lane, or agree the overage before it reaches production.`
+          :left===0?'<b style="color:var(--good)">Exactly the contracted volume.</b>'
+          :`${left} concept${left===1?'':'s'} still uncommitted for this period.`}</div>`
+        :`<div class="capnum">${pl} <span>planned</span></div>
+        <div class="hint" style="margin-top:3px"><b style="color:var(--warn)">No contracted volume set for ${esc(B.name)}</b> — enter concepts/month to see planned vs contracted. (HubSpot deal wiring pending — better “no data” than a silent default.)</div>`}
+      </div>
+    </div>
+    <div class="hint" style="margin-top:7px">${esc(periodLabel()||'Pick a start date')}${cap!=null?` · contract: <b>${perMonth()}/month pro-rated over ${perWeeks()} week${perWeeks()>1?'s':''} = ${cap} concepts</b> · set manually by the strategist`:''} · variants don’t count here: the contract is measured in concepts.</div>
+  </div></div>`;
+}
 function vTube(lanes,opts){return '';}      /* step 3: the line map */
 function hlLane(i){}                        /* step 3 */
 function vRmExport(){return '';}            /* step 4: the export hub */
