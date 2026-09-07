@@ -176,6 +176,18 @@ body.print-single .brief.print-target{display:block;}
 .alert{display:flex; gap:10px; padding:9px 13px; border-radius:9px; margin-bottom:7px; font-size:12.5px; align-items:baseline;}
 .alert.warn{background:var(--warn-soft);}
 .alert.bad{background:var(--bad-soft);}
+/* ── export hub (step 4) ── */
+.tabs{display:flex; gap:5px; flex-wrap:wrap;}
+.tab{border:1px solid var(--line2); background:var(--card2); color:var(--ink2); border-radius:9px; padding:6px 12px; font-size:12.5px; font-weight:700; cursor:pointer;}
+.tab.on{background:var(--ink); border-color:var(--ink); color:var(--bg);}
+.rlmodal{position:fixed; inset:0; z-index:120; background:rgba(0,0,0,.45); display:flex; align-items:center; justify-content:center; padding:26px;}
+.mbox{background:var(--card); border:1px solid var(--line); border-radius:16px; box-shadow:0 12px 48px rgba(0,0,0,.3); width:min(1120px,100%); max-height:88vh; overflow:auto;}
+.mtable{overflow:auto; max-height:210px; border:1px solid var(--line); border-radius:10px;}
+.mtable table.k{min-width:1500px;}
+.mtable th{position:sticky; top:0; background:var(--card); white-space:nowrap;}
+.mtable td{white-space:nowrap; font-size:11.5px;}
+.onepv{width:100%; height:440px; border:1px solid var(--line2); border-radius:10px; background:#fff; margin-top:4px;}
+.tsvbox{width:100%; height:150px; margin-top:10px; border:1px solid var(--line2); background:var(--card2); color:var(--ink2); border-radius:9px; padding:8px 10px; font:11px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; resize:vertical; white-space:pre; overflow:auto;}
 /* ── the line map (step 3) ── */
 .tubewrap{overflow-x:auto; padding:2px 0;}
 .tube{display:block; min-width:1180px; color:var(--ink);}
@@ -246,16 +258,7 @@ table.k.specs select{width:100%; border:1px solid var(--line2); background:var(-
 </div>
 <main id="view"></main>
 
-<div class="modal-bg" id="m-export"><div class="modal">
-  <h3 style="margin-bottom:6px">Export to Strategy Sheet</h3>
-  <div class="hint" style="margin-bottom:14px">Assign a Delivery Number to each swimlane, and set the starting Concept Number so nothing collides with previous deliveries. Swimlanes re-order ascending by Delivery Number; Concept Numbers are assigned sequentially; each variant keeps D# + C# and increments V##.</div>
-  <div id="exportLanes"></div>
-  <div class="f" style="margin-top:10px; max-width:220px"><label>Starting Concept Number</label><input type="number" id="expC0" min="1" value="1"></div>
-  <div style="display:flex; gap:8px; margin-top:16px">
-    <button class="btn primary" onclick="doExport()">Generate Strategy Sheet</button>
-    <button class="btn" onclick="closeModal('export')">Cancel</button>
-  </div>
-</div></div>
+
 
 <script>
 /* STAT performance seed — Looker export Jul 4 – Aug 3 2026 + Strategy Sheet dims (legacy CTPs mapped per Felipe, Aug 24) */
@@ -1920,7 +1923,318 @@ ${esc(l.hypothesis||'')}</title>
 function hlLane(i){const e=document.getElementById('tubesvg'); if(!e)return;
   e.classList.toggle('hl',i!=null);
   e.querySelectorAll('.ln,.st').forEach(n=>n.classList.toggle('on',i!=null&&n.classList.contains('l'+i)));}
-function vRmExport(){return '';}            /* step 4: the export hub */
+/* ═══════════ THE EXPORT HUB (lab it7/it8) — one roadmap, six audiences ═══════════
+   The sheet needs machine rows, production needs dates and costs, the brief maker needs
+   the strategy payload, humans need prose, a review needs a printable page, and the app
+   needs the contract object. Columns the roadmap does not know are left BLANK on purpose. */
+let RMX={exp:null};
+const cleanCell=v=>String(v??'').replace(/[\t\r\n]+/g,' ').trim();
+const tsvOf=(cols,rows,keys)=>[cols.join('\t'),...rows.map(r=>keys.map(k=>cleanCell(r[k])).join('\t'))].join('\n');
+const csvOf=(cols,rows,keys)=>[cols,...rows.map(r=>keys.map(k=>cleanCell(r[k])))]
+  .map(c=>c.map(x=>/[",]/.test(x)?'"'+x.replace(/"/g,'""')+'"':x).join(',')).join('\n');
+function currentLanes(){return (B.roadmap||B.draft||{}).lanes||[];}
+/* per-concept spine — everything downstream is a projection of this */
+function rmConcepts(lanes){
+  const nums=conceptNumbers(lanes), plan=dueMapOf(lanes), out=[];
+  laneOrder(lanes).forEach(({l,i})=>{
+    const n=Math.max(1,+l.concepts||1), g=plan[+l.delivery];
+    for(let k=0;k<n;k++){
+      const sp=(l.conceptSpecs||[])[k]||{}, m=menuOf(sp.route);
+      out.push({lane:l,laneIndex:i,k,
+        d:+l.delivery||0,cNum:(nums[i]||[])[k]||0,
+        casting:sp.casting||((l.castings||[]).length===1?l.castings[0]:''),
+        format:sp.format||((l.formats||[]).length===1?l.formats[0]:''),
+        route:sp.route||'',menu:m,
+        due:g&&g.due?g.due:null,
+        start:(g&&g.due&&m&&m.bd)?addDays(g.due,-(bdToCal(m.bd)-1)):null});
+    }
+  });
+  return out;
+}
+/* 1. Strategy Sheet rows — the tool's 31 columns, one row per variant */
+function rmSheetRows(lanes){
+  const rows=[];
+  rmConcepts(lanes).forEach(c=>{
+    const nV=+c.lane.variants||1;
+    for(let v=1;v<=nV;v++)rows.push({brand:B.name.toUpperCase(),status:'Not Started',
+      d:'D'+String(c.d).padStart(3,'0'),c:'C'+String(c.cNum).padStart(3,'0'),
+      deliveryDue:c.due?ymdOf(c.due):'',strategist:route.strategist||'Evan',
+      variant:c.lane.variants?'V'+String(v).padStart(2,'0'):'',newIter:'NEW',
+      format:c.format,talent:c.casting,hypothesis:cleanCell(c.lane.hypothesis),
+      product:B.layer.product.name,
+      ctp:(personaOf(c.lane.ctp)||{}).tag||c.lane.ctp,segment:c.lane.segment,angle:c.lane.angle,
+      funnel:c.lane.funnel,phase:c.lane.phase});
+  });
+  return rows;
+}
+/* the in-app Strategy Sheet (feeds the Brief Maker) is generated from the same rows */
+function buildSheet(){
+  const lanes=currentLanes();
+  const rows=rmSheetRows(lanes);
+  if(!rows.length){alert('No swimlanes to export.');return;}
+  if(B.sheet&&B.sheet.rows.length&&!confirm('This replaces the current in-app Strategy Sheet ('+B.sheet.rows.length+' rows). Continue?'))return;
+  B.sheet={rows,exportedAt:new Date().toISOString().slice(0,10),from:(B.roadmap||{}).title||((RM().thesis.title?RM().thesis.title+' — ':'')+(periodLabel()||'draft roadmap'))};
+  save(); RMX.exp=null; go('sheet');
+}
+/* 2. Production plan (PM / Monday) */
+const PROD_COLS=['Delivery','Due date','Concept','Route','Route name','Team','Business days','Menu base cost','Start by','Format','Talent','CTP','Segment','Angle'];
+const PROD_KEYS=['d','due','c','route','routeName','team','bd','cost','start','format','talent','ctp','segment','angle'];
+function prodRows(lanes){
+  return rmConcepts(lanes).map(c=>({
+    d:'D'+String(c.d).padStart(3,'0'),due:c.due?ymdOf(c.due):'',
+    c:'C'+String(c.cNum).padStart(3,'0'),
+    route:c.route||'',routeName:c.menu?c.menu.name:'',team:c.menu?c.menu.team:'',
+    bd:c.menu&&c.menu.bd?c.menu.bd:'',cost:c.menu&&c.menu.cost?c.menu.cost:'',
+    start:c.start?ymdOf(c.start):'',format:c.format,talent:c.casting,
+    ctp:c.lane.ctp,segment:c.lane.segment,angle:c.lane.angle}));
+}
+/* 3. Brief payload — one object per concept with the strategy resolved */
+function briefPayload(lanes){
+  const t=RM().thesis;
+  return {roadmap:{title:(B.roadmap||{}).title||t.title,period:periodLabel(),thesis:{...t}},
+    concepts:rmConcepts(lanes).map(c=>{
+      const pr=personaOf(c.lane.ctp)||B.layer.ctps.find(x=>x.name===c.lane.ctp)||{}, sg=segOf(c.lane.segment)||{};
+      return {delivery:'D'+String(c.d).padStart(3,'0'),concept:'C'+String(c.cNum).padStart(3,'0'),
+        variants:+c.lane.variants||0,dueDate:c.due?ymdOf(c.due):null,
+        ctp:{name:c.lane.ctp,tag:pr.tag||null,insight:pr.insight||null,clothingPersona:pr.clothingPersona||[]},
+        segment:{name:c.lane.segment,age:sg.age||null,castingMenu:sg.casting||[]},
+        angle:c.lane.angle,funnel:c.lane.funnel,phase:c.lane.phase,
+        hypothesis:c.lane.hypothesis,notes:c.lane.notes||'',
+        casting:c.casting||null,format:c.format||null,
+        production:c.menu?{route:c.menu.id,name:c.menu.name,timeline:c.menu.tl,team:c.menu.team,baseCost:c.menu.cost}:null};
+    })};
+}
+/* 4. Human read (Slack / Notion / the client) — markdown */
+function roadmapMD(lanes){
+  const t=RM().thesis, plan=rmPlan(lanes), pl=plannedConcepts(lanes), cap=rmCapacity();
+  const nums=conceptNumbers(lanes);
+  const L=[];
+  L.push('# '+((B.roadmap||{}).title||(t.title?t.title+' — ':'')+(periodLabel()||'Creative Roadmap')));
+  if(t.text)L.push('',t.text);
+  if(t.from||t.to)L.push('','**Coming from:** '+(t.from||'—'),'**Going to:** '+(t.to||'—'));
+  L.push('','**'+(periodLabel()||'no period')+'** · '+pl+(cap!=null?' of '+cap+' contracted':'')+' concepts · '
+    +lanes.length+' swimlanes'+(plan.reduce((a,x)=>a+x.bd,0)?' · '+plan.reduce((a,x)=>a+x.bd,0)+' business days of production (Menu quotes)':'')
+    +(plan.reduce((a,x)=>a+x.cost,0)?' · Menu base cost $'+plan.reduce((a,x)=>a+x.cost,0).toLocaleString():''));
+  plan.forEach(g=>{
+    L.push('','## D'+String(g.d).padStart(3,'0')+(g.due?' — due '+fmtD(g.due)+', '+g.due.getFullYear():'')
+      +(g.bd?' ('+g.bd+' business days, start by '+fmtD(g.start)+')':''));
+    g.lanes.forEach(l=>{
+      const cn=nums[l._i]||[];
+      L.push('','**Test '+l.ctp+' in '+l.segment+', through the '+l.angle+' angle, at '+l.funnel+' as an '+l.phase+' play.**');
+      L.push('> '+(l.hypothesis||'(no hypothesis)'));
+      (l.conceptSpecs&&l.conceptSpecs.length?l.conceptSpecs:Array.from({length:Math.max(1,+l.concepts||1)},()=>({}))).slice(0,Math.max(1,+l.concepts||1)).forEach((sp,k)=>{
+        const m=menuOf(sp.route);
+        L.push('- **C'+String(cn[k]||0).padStart(3,'0')+'**'+(l.variants?' ×'+l.variants+' variants':'')
+          +' — '+(sp.format||'format TBD')+(sp.casting?' · '+sp.casting:'')+(m?' · '+m.name+' ('+m.tl+')':''));
+      });
+      if(l.notes)L.push('','_Notes: '+l.notes+'_');
+    });
+  });
+  L.push('','_Confidence projections ("what this roadmap will teach") arrive when the knowledge engine is wired to live performance data._');
+  return L.join('\n');
+}
+/* 5. Contract JSON — the roadmap object exactly as the app consumes it (§6.1) */
+function contractJSON(lanes){
+  const r=RM(), nums=conceptNumbers(lanes), cap=rmCapacity();
+  return JSON.stringify(B.roadmap||{
+    title:(r.thesis.title?r.thesis.title+' — ':'')+(periodLabel()||''),period:periodLabel(),
+    periodStart:r.period.start,periodWeeks:perWeeks(),periodEnd:perEnd()?ymdOf(perEnd()):null,
+    thesis:{...r.thesis},conceptStart:+r.conceptStart||1,
+    contract:{conceptsPerMonth:perMonth(),capacity:cap,planned:plannedConcepts(lanes),
+      source:perMonth()==null?'not set (HubSpot wiring pending)':'strategist manual',of:B.name},
+    schedule:rmPlan(lanes).map(x=>({delivery:x.d,due:x.due?ymdOf(x.due):null,businessDays:x.bd,menuCost:x.cost,unroutedConcepts:x.unset})),
+    lanes:lanes.map((l,i)=>({...l,conceptNums:nums[i]})),consolidatedAt:null},null,1);
+}
+/* 6. The one-pager — the roadmap as something you can put in front of people.
+   Standalone, printable to a single landscape sheet. The argument, not the workbench. */
+const OP_CSS=`
+*{box-sizing:border-box}
+body{margin:0;background:#ececed;color:#17181c;font:13px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.sheet{width:1160px;margin:22px auto;background:#fff;padding:30px 34px 24px;box-shadow:0 4px 26px rgba(0,0,0,.10);border-radius:6px}
+.hd{display:flex;align-items:flex-start;gap:16px;border-bottom:2px solid #17181c;padding-bottom:13px}
+.hd h1{margin:0;font-size:27px;line-height:1.14;letter-spacing:-.02em;max-width:760px}
+.eyebrow{font-size:10.5px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:#8a63d2;margin-bottom:5px}
+.per{margin-left:auto;text-align:right;flex:none}
+.perpill{display:inline-block;background:#8a63d2;color:#fff;font-size:12px;font-weight:800;border-radius:999px;padding:5px 13px;white-space:nowrap}
+.persub{font-size:10.5px;color:#7b808a;margin-top:4px}
+.thesis{display:flex;gap:16px;margin:15px 0 0;padding:13px 16px;background:#f7f5fc;border-left:3px solid #8a63d2;border-radius:0 9px 9px 0}
+.thesis p{margin:0;font-size:13.5px;line-height:1.55;flex:1}
+.fromto{flex:none;width:290px;display:flex;flex-direction:column;gap:7px}
+.ft{font-size:11px;line-height:1.35}
+.ft b{display:block;font-size:9.5px;font-weight:800;letter-spacing:.09em;text-transform:uppercase;color:#8a63d2;margin-bottom:1px}
+.stats{display:flex;gap:9px;margin:15px 0 4px}
+.st1{flex:1;border:1px solid #e4e4e9;border-radius:10px;padding:9px 12px}
+.st1 .v{font-size:21px;font-weight:800;letter-spacing:-.02em;line-height:1.1}
+.st1 .l{font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:#7b808a;margin-top:2px}
+.st1 .v small{font-size:13px;font-weight:700;color:#7b808a}
+h2.sec2{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#7b808a;margin:19px 0 8px;padding-bottom:5px;border-bottom:1px solid #e4e4e9}
+.mapbox{border:1px solid #e4e4e9;border-radius:11px;padding:6px 4px 2px;overflow:hidden}
+svg.tube{display:block;width:100%;height:auto;color:#17181c}
+svg.tube .ln{fill:none;stroke-linecap:round;stroke-linejoin:round;stroke-width:7}
+svg.tube text{font:600 10.5px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;fill:currentColor;stroke:#fff;stroke-width:3.6px;paint-order:stroke fill;stroke-linejoin:round}
+svg.tube text.sub{font-weight:500;font-size:9.5px;fill:#7b808a}
+svg.tube text.cn{font-weight:700;font-size:9.5px}
+svg.tube text.dl{font-weight:800;font-size:11px;fill:#fff;stroke:none}
+svg.tube .ic{fill:#fff;stroke:currentColor;stroke-width:2.6}
+svg.tube .sn{stroke:#fff;stroke-width:2.4}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.test{border:1px solid #e4e4e9;border-left-width:4px;border-radius:9px;padding:9px 12px;break-inside:avoid}
+.tl1{font-size:12.5px;line-height:1.45}
+.tl1 b{font-weight:700}
+.dchip{display:inline-block;font-size:10px;font-weight:800;color:#fff;border-radius:5px;padding:1px 6px;margin-right:5px;vertical-align:1px}
+.hyp{margin:5px 0 0;font-size:11.5px;color:#4b4f58;font-style:italic;border-left:2px solid #e4e4e9;padding-left:8px}
+.cps{margin-top:6px;display:flex;flex-direction:column;gap:2px}
+.cp{font-size:10.5px;color:#4b4f58}
+.cp b{color:#17181c;font-weight:700}
+.ft2{margin-top:16px;padding-top:9px;border-top:1px solid #e4e4e9;font-size:9.5px;color:#7b808a;display:flex;gap:12px}
+.ft2 b{color:#4b4f58}
+.warn{background:#fdf4e3;border:1px solid #e0aa52;color:#8a5a12;border-radius:7px;padding:5px 9px;font-size:9.5px;font-weight:600}
+@media print{
+  @page{size:A4 landscape;margin:9mm}
+  body{background:#fff}
+  .sheet{width:auto;margin:0;padding:0;box-shadow:none;border-radius:0}
+}`;
+function onePagerHTML(lanes){
+  const t=RM().thesis, plan=rmPlan(lanes);
+  const nums=conceptNumbers(lanes);
+  const pl=plannedConcepts(lanes), cap=rmCapacity();
+  const ads=lanes.reduce((a,l)=>a+((+l.concepts||0)*(+l.variants||1)),0);
+  const bd=plan.reduce((a,x)=>a+x.bd,0), cost=plan.reduce((a,x)=>a+x.cost,0);
+  const title=t.title||(B.roadmap||{}).title||'Creative Roadmap';
+  const tile=(v,l)=>`<div class="st1"><div class="v">${v}</div><div class="l">${l}</div></div>`;
+  const tests=laneOrder(lanes).map(({l,i})=>{
+    const col=TUBE_C(i), cn=nums[i]||[];
+    return `<div class="test" style="border-left-color:${col}">
+      <div class="tl1"><span class="dchip" style="background:${col}">D${String(+l.delivery||0).padStart(3,'0')}</span>
+        Test <b>${esc(l.ctp)}</b> in <b>${esc(l.segment)}</b>, through the <b>${esc(l.angle)}</b> angle,
+        at <b>${esc(l.funnel)}</b> as an <b>${esc(l.phase)}</b> play.</div>
+      ${l.hypothesis?`<p class="hyp">${esc(l.hypothesis)}</p>`:''}
+      <div class="cps">${(l.conceptSpecs||[]).slice(0,Math.max(1,+l.concepts||1)).map((sp,k)=>{
+        const m=menuOf(sp.route);
+        return `<div class="cp"><b>C${String(cn[k]||0).padStart(3,'0')}</b>${l.variants?` ×${l.variants}`:''} · ${esc(sp.format||'format TBD')}${sp.casting?' · '+esc(sp.casting):''}${m?` · ${esc(m.name)} (${esc(m.tl)})`:''}</div>`;
+      }).join('')||`<div class="cp">${Math.max(1,+l.concepts||1)} concept(s)</div>`}</div>
+    </div>`;}).join('');
+  return `<!doctype html><html><head><meta charset="utf-8">
+<title>${esc(title)}</title><style>${OP_CSS}</style></head><body><div class="sheet">
+  <div class="hd"><div>
+    <div class="eyebrow">${esc(B.name)} · Creative Roadmap</div>
+    <h1>${esc(title)}</h1></div>
+    <div class="per"><span class="perpill">${esc(periodLabel()||'—')}</span>
+      <div class="persub">${plan.length} deliver${plan.length===1?'y':'ies'}${plan.length&&plan[0].due?` · first ${esc(fmtD(plan[0].due))}, last ${esc(fmtD(plan[plan.length-1].due))}`:''}</div></div>
+  </div>
+  ${t.text||t.from||t.to?`<div class="thesis">
+    ${t.text?`<p>${esc(t.text)}</p>`:'<p></p>'}
+    ${t.from||t.to?`<div class="fromto">
+      <div class="ft"><b>Coming from</b>${esc(t.from||'—')}</div>
+      <div class="ft"><b>Going to</b>${esc(t.to||'—')}</div></div>`:''}
+  </div>`:''}
+  <div class="stats">
+    ${tile(lanes.length,'Tests')}
+    ${cap!=null?tile(`${pl}<small> / ${cap}</small>`,'Concepts · contracted'):tile(pl,'Concepts')}
+    ${tile(ads,'Ads with variants')}
+    ${tile(plan.length,'Deliveries')}
+    ${bd?tile(`${bd}<small>d</small>`,'Production days (Menu quotes)'):''}
+    ${cost?tile(`$${cost.toLocaleString()}`,'Menu base cost'):''}
+  </div>
+  <h2 class="sec2">The network — every test, and where they cross</h2>
+  <div class="mapbox">${vTube(lanes,{raw:true,id:'op'})}</div>
+  <h2 class="sec2">The tests</h2>
+  <div class="grid">${tests}</div>
+  <div class="ft2">
+    <span><b>Hollow station</b> = two or more tests share that dimension, so they inherit each other's evidence.
+      <b>Terminus</b> = the delivery. Production days are the Creative Menu's quoted turnarounds, not measured cycle time.</span>
+    <span class="warn" style="margin-left:auto;flex:none">${esc(B.name)} Strategy OS · confidence projections arrive with the live-data knowledge engine</span>
+  </div>
+</div></body></html>`;
+}
+function printOnePager(){
+  const w=window.open('','_blank');
+  if(!w){alert('The browser blocked the new window — use Download .html instead.');return;}
+  w.document.write(onePagerHTML(currentLanes())); w.document.close();
+  setTimeout(()=>{try{w.focus();w.print();}catch(e){}},350);
+}
+const RM_EXPORTS={
+  sheet:{icon:'📊',name:'Strategy Sheet',ext:'tsv',
+    blurb:'The 31 columns of the Strategy Sheet, one row per variant. Paste straight into the spreadsheet — or generate the in-app sheet, which is what the Brief Maker reads.',
+    build:l=>({cols:SHEET_COLS,keys:SHEET_KEYS,rows:rmSheetRows(l)})},
+  production:{icon:'🛠',name:'Production plan',ext:'csv',
+    blurb:'One row per concept with its Menu route, team, business days, base cost, due date and the date it has to start. For PM / Monday. Menu figures are quoted turnarounds, not measured cycle time.',
+    build:l=>({cols:PROD_COLS,keys:PROD_KEYS,rows:prodRows(l)})},
+  briefs:{icon:'📝',name:'Brief payload',ext:'json',
+    blurb:'One object per concept with the strategy resolved — persona insight and clothing persona, segment age and casting menu, angle, funnel, phase, hypothesis, notes, casting, format and production route.',
+    build:l=>({text:JSON.stringify(briefPayload(l),null,1)})},
+  doc:{icon:'📄',name:'Readable roadmap',ext:'md',
+    blurb:'Markdown: the thesis, the deliveries with their dates, every swimlane as its sentence and hypothesis, and the concepts with casting/format/route. For Slack, Notion or the client.',
+    build:l=>({text:roadmapMD(l)})},
+  onepager:{icon:'🖼',name:'One-pager',ext:'html',html:true,
+    blurb:'A standalone, printable page: the thesis, the numbers, the network and every test. No working material. For a review, a deck or the client — print it to a single landscape sheet.',
+    build:l=>({text:onePagerHTML(l),html:true})},
+  json:{icon:'{ }',name:'Contract JSON',ext:'json',
+    blurb:'The roadmap object exactly as the app consumes it (roadmap-lab FINAL SPEC §6.1), additive fields included.',
+    build:l=>({text:JSON.stringify(JSON.parse(contractJSON(l)),null,1)})}
+};
+function openExport(k){
+  const lanes=currentLanes();
+  if(!lanes.length){alert('No swimlanes to export yet.');return;}
+  const missing=lanes.filter(l=>!+l.delivery).length;
+  if(missing&&!confirm(missing+' swimlane'+(missing>1?'s have':' has')+' no delivery number — those rows export as D000.\n\nExport anyway?'))return;
+  RMX.exp=k||RMX.exp||'sheet'; render();
+}
+function setExp(k){RMX.exp=k;render();}
+function closeExport(){RMX.exp=null;render();}
+function expText(k,lanes){
+  const b=RM_EXPORTS[k].build(lanes);
+  return b.text!==undefined?b.text:tsvOf(b.cols,b.rows,b.keys);
+}
+function copyExp(){
+  const t=document.getElementById('expbox'); if(t){t.focus();t.select();}
+  try{navigator.clipboard.writeText(expText(RMX.exp,currentLanes()));}catch(e){try{document.execCommand('copy');}catch(e2){}}
+  const b=document.getElementById('copybtn'); if(b){b.textContent='✓ Copied';setTimeout(()=>{b.textContent='📋 Copy';},2000);}
+}
+function downloadExp(asCSV){
+  const k=RMX.exp, lanes=currentLanes(), E=RM_EXPORTS[k], b=E.build(lanes);
+  const text=(asCSV&&b.rows)?csvOf(b.cols,b.rows,b.keys):expText(k,lanes);
+  const ext=(asCSV&&b.rows)?'csv':E.ext;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([text],{type:'text/plain'}));
+  a.download=`roadmap-${k}-${RM().period.start||'current'}.${ext}`;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+}
+function vRmExport(){
+  const k=RMX.exp; if(!k||!RM_EXPORTS[k])return '';
+  const lanes=currentLanes(), E=RM_EXPORTS[k], b=E.build(lanes), text=expText(k,lanes);
+  const noTalent=b.rows&&k==='sheet'?b.rows.filter(r=>!r.talent).length:0;
+  const noRoute=k==='production'&&b.rows?b.rows.filter(r=>!r.route).length:0;
+  return `<div class="rlmodal" onclick="if(event.target===this)closeExport()"><div class="mbox">
+    <div class="card-h"><h3>⬇ Export the roadmap</h3>
+      <span class="hint">${lanes.length} swimlane${lanes.length===1?'':'s'} · ${plannedConcepts(lanes)} concepts · ${esc(periodLabel()||'no period')}</span>
+      <button class="btn tiny" style="margin-left:auto" onclick="closeExport()">✕ Close</button></div>
+    <div class="card-b">
+      <div class="tabs">${Object.entries(RM_EXPORTS).map(([id,x])=>`<span class="tab ${k===id?'on':''}" onclick="setExp('${id}')">${x.icon} ${esc(x.name)}</span>`).join('')}</div>
+      <div class="hint" style="margin:9px 0">${esc(E.blurb)}</div>
+      <div style="display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap">
+        ${k==='sheet'?`<button class="btn primary" onclick="buildSheet()">📊 Generate the in-app Strategy Sheet</button>`:''}
+        <button class="btn ${k==='sheet'?'':'primary'}" id="copybtn" onclick="copyExp()">📋 Copy</button>
+        <button class="btn" onclick="downloadExp(false)">⬇ Download .${E.ext}</button>
+        ${b.rows?`<button class="btn" onclick="downloadExp(true)">⬇ Download .csv</button>`:''}
+        ${b.html?`<button class="btn" onclick="printOnePager()">🖨 Open &amp; print</button>`:''}
+        <span class="hint" style="flex:1;min-width:180px">${b.rows?`${b.rows.length} row${b.rows.length===1?'':'s'} · tab-separated — paste straight into Google Sheets. Header included; drop it when appending.`:`${text.split(String.fromCharCode(10)).length} lines`}</span>
+      </div>
+      ${b.rows?`<div class="mtable"><table class="k"><tr>${b.cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr>
+        ${b.rows.slice(0,12).map(r=>`<tr>${b.keys.map(x=>`<td>${esc(r[x]||'')}</td>`).join('')}</tr>`).join('')}
+      </table>${b.rows.length>12?`<div class="hint" style="padding:6px 8px">…and ${b.rows.length-12} more row${b.rows.length-12===1?'':'s'}.</div>`:''}</div>`:''}
+      ${b.html?`<iframe class="onepv" srcdoc="${esc(text)}"></iframe>
+        <textarea id="expbox" class="tsvbox" readonly style="height:60px" onclick="this.select()">${esc(text)}</textarea>`
+        :`<textarea id="expbox" class="tsvbox" readonly onclick="this.select()">${esc(text)}</textarea>`}
+      ${k==='sheet'?`<div class="hint" style="margin-top:8px">
+        <b>Filled from the roadmap:</b> D#/C#/V##, CTP as its <b>tag</b> (what the naming convention consumes), Segment, Angle, Funnel, Phase, Hypothesis, Product, plus Format and Talent <b>per concept</b> and the Delivery Due Date from the period plan (even weekday spread — the production-calendar module makes it editable).
+        <b>Left blank on purpose:</b> Concept Name, brief/footage/script dates and links, Visual Hook, Visual Style, Offer Type, Variation Final Name, Sizes, Owner, Target Platform — the roadmap does not know them, and a guess in a sheet the team works off is worse than an empty cell.
+        ${noTalent?`<br><b style="color:var(--warn)">⚠ ${noTalent} row${noTalent===1?'':'s'} without Talent</b> — those concepts have no per-concept casting, so the sheet's dropdown decides.`:''}</div>`:''}
+      ${k==='production'&&noRoute?`<div class="hint" style="margin-top:8px"><b style="color:var(--warn)">⚠ ${noRoute} concept${noRoute===1?'':'s'} with no production route</b> — no timing or cost for those rows. Menu figures are quoted turnarounds, not measured cycle time.</div>`:''}
+    </div></div></div>`;
+}
+
 
 function vRoadmap(){
   if(B.roadmap&&!B.draft)return vRoadmapView();
@@ -1958,7 +2272,7 @@ function vBuilder(){
         ${a.length?`<div class="hint" style="margin-top:6px">${a.length} selected — add more to compose every combination, or <a href="#" onclick="comp['${k}']=[];comp.open=null;render();return false" style="color:var(--accent)">clear</a>.</div>`:''}
       </div>`:''}</div>`;};
   return `<div class="shead"><h2>🗺️ Creative Roadmap — builder</h2>
-    <div class="acts"><button class="btn" onclick="B.draft=null;save();go('flow')">← Back (discard)</button></div></div>
+    <div class="acts"><button class="btn" onclick="openExport()">⬇ Export</button><button class="btn" onclick="B.draft=null;save();go('flow')">← Back (discard)</button></div></div>
   ${vThesis()}
   <div class="tiles">
     <div class="tile"><div class="v">${d.lanes.length}</div><div class="l">Swimlanes</div></div>
@@ -2075,43 +2389,7 @@ function vRoadmapView(){
 }
 function changeRoadmap(){B.draft={lanes:B.roadmap.lanes.map(l=>({...l}))}; B.roadmap=null; comp=rmBlank(); save(); render();}
 
-/* ══════════ EXPORT → STRATEGY SHEET (step 4 replaces this modal with the export hub) ══════════ */
-function openExport(){
-  const el=document.getElementById('exportLanes');
-  el.innerHTML=B.roadmap.lanes.map((l,i)=>`<div class="f" style="display:flex; gap:10px; align-items:center; margin-bottom:6px">
-    <span style="flex:1; font-size:12.5px">${i+1}. ${esc(l.ctp)} + ${esc(l.angle)} (${l.concepts}c${l.variants?'×'+l.variants+'v':''})</span>
-    <label style="margin:0">D#</label><input type="number" id="expD${i}" min="1" value="${l.delivery||''}" placeholder="e.g. ${7+i}" style="width:90px"></div>`).join('');
-  document.getElementById('expC0').value=+RM().conceptStart||1;
-  document.getElementById('m-export').classList.add('open');
-}
-function closeModal(id){document.getElementById('m-'+id).classList.remove('open');}
-function doExport(){
-  const lanes=B.roadmap.lanes.map((l,i)=>({...l,delivery:+document.getElementById('expD'+i).value||0,_i:i}));
-  if(lanes.some(l=>!l.delivery)){alert('Assign a Delivery Number to every swimlane.');return;}
-  let c=+document.getElementById('expC0').value||1;
-  lanes.sort((a,b)=>a.delivery-b.delivery||a._i-b._i);
-  const rows=[];
-  lanes.forEach(l=>{
-    for(let k=0;k<(+l.concepts||1);k++){
-      const cNum=c++;
-      const nV=+l.variants||1;
-      const sp=(l.conceptSpecs||[])[k]||{};
-      for(let v=1;v<=nV;v++){
-        rows.push({brand:B.name.toUpperCase(),status:'Not Started',
-          d:'D'+String(l.delivery).padStart(3,'0'),c:'C'+String(cNum).padStart(3,'0'),
-          strategist:route.strategist||'Evan',variant:l.variants?('V'+String(v).padStart(2,'0')):'',
-          /* sheet is for machines: CTP column carries the persona TAG; Talent/Format come PER CONCEPT
-             from conceptSpecs when set, falling back to the lane-level single-option rule */
-          product:B.layer.product.name,hypothesis:l.hypothesis,ctp:(personaOf(l.ctp)||{}).tag||l.ctp,segment:l.segment,
-          angle:l.angle,funnel:l.funnel,phase:l.phase,
-          talent:sp.casting||((l.castings||[]).length===1?l.castings[0]:''),format:sp.format||((l.formats||[]).length===1?l.formats[0]:'')});
-      }
-    }
-  });
-  B.roadmap.lanes=lanes.map(({_i,...l})=>l);
-  B.sheet={rows,exportedAt:new Date().toISOString().slice(0,10),from:B.roadmap.title};
-  save(); closeModal('export'); go('sheet');
-}
+
 
 function vSheet(){
   if(!sheetComplete())return `<div class="shead"><h2>📊 Strategy Sheet</h2><span class="badge no">Incomplete</span>
