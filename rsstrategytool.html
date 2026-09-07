@@ -2292,7 +2292,6 @@ function vBuilder(){
     <div class="tile"><div class="v">${totA}</div><div class="l">Total ads (with variants)</div></div>
     ${cap!=null?`<div class="tile"><div class="v" style="color:${totC>cap?'var(--bad)':totC===cap?'var(--good)':'inherit'}">${totC}/${cap}</div><div class="l">Contracted concepts · ${esc(periodLabel()||'no period')}</div></div>`:''}
   </div>
-  ${vTube(d.lanes)}
   <div class="rb-wrap">
     <div>
       ${d.lanes.map((l,i)=>`<div class="lane" style="border-left-color:${TUBE_C(i)}" onmouseenter="hlLane(${i})" onmouseleave="hlLane(null)">
@@ -2348,7 +2347,8 @@ function vBuilder(){
       <button class="btn primary" style="margin-top:12px" onclick="addLane()">＋ ${comp._edit!==undefined?'Save swimlane':'Add '+(cs.length>1?cs.length+' swimlanes':'swimlane')}</button>`
       :`<div class="hint" style="margin-top:12px">Pick at least one value in each step — then the hypothesis and volume appear.</div>`}
     </div></div>
-  </div>${vRmExport()}`;
+  </div>
+  ${vTube(d.lanes)}${vRmExport()}`;
 }
 /* line colours (TfL palette) — shared by the lane cards and (step 3) the map */
 const TUBE=['#e32017','#0098d4','#00782a','#b36305','#9b0056','#003688','#00a4a7','#ee7c0e','#84b817','#d31a80','#5a4fcf','#00bd19'];
@@ -2392,12 +2392,12 @@ function vRoadmapView(){
     <div class="tile"><div class="v">${totA}</div><div class="l">Total ads</div></div>
     ${cap!=null?`<div class="tile"><div class="v" style="color:${totC>cap?'var(--bad)':totC===cap?'var(--good)':'inherit'}">${totC}/${cap}</div><div class="l">Contracted concepts${R.periodWeeks?` · ${R.periodWeeks} weeks`:''}</div></div>`:''}
   </div>
-  ${vTube(R.lanes)}
   ${R.lanes.map((l,i)=>`<div class="lane" style="border-left-color:${TUBE_C(i)}" onmouseenter="hlLane(${i})" onmouseleave="hlLane(null)"><div class="lt"><b>${l.delivery?'D'+String(l.delivery).padStart(3,'0'):'Swimlane '+(i+1)}:</b>
     Test <b>${esc(l.ctp)}</b> in <b>${esc(l.segment)}</b>, through the <b>${esc(l.angle)}</b> angle, at <b>${esc(l.funnel)}</b> as an <b>${esc(l.phase)}</b> play.</div>
     <div class="lm"><b>Hypothesis:</b> ${esc(l.hypothesis)}</div>
     ${(l.conceptSpecs||[]).some(x=>x.casting||x.format)?`<div class="lm">${(l.conceptSpecs||[]).map((x,k)=>`C${String((l.conceptNums||[])[k]||0).padStart(3,'0')}: ${esc(x.format||'—')}${x.casting?' · 🎭 '+esc(x.casting):''}`).join(' &nbsp;|&nbsp; ')}</div>`:''}
-    <div class="lm">${l.concepts} concept(s)${l.variants?` × ${l.variants} variant(s)`:''}${(l.castings||[]).length?` · <b>🎭</b> ${esc(l.castings.join(', '))}`:''}${(l.formats||[]).length?` · <b>🎞</b> ${esc(l.formats.join('/'))}`:''}${l.notes?` · <b>Notes:</b> ${esc(l.notes)}`:''}</div></div>`).join('')}${vRmExport()}`;
+    <div class="lm">${l.concepts} concept(s)${l.variants?` × ${l.variants} variant(s)`:''}${(l.castings||[]).length?` · <b>🎭</b> ${esc(l.castings.join(', '))}`:''}${(l.formats||[]).length?` · <b>🎞</b> ${esc(l.formats.join('/'))}`:''}${l.notes?` · <b>Notes:</b> ${esc(l.notes)}`:''}</div></div>`).join('')}
+  ${vTube(R.lanes)}${vRmExport()}`;
 }
 function changeRoadmap(){B.draft={lanes:B.roadmap.lanes.map(l=>({...l}))}; B.roadmap=null; comp=rmBlank(); save(); render();}
 
