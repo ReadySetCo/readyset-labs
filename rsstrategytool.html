@@ -176,6 +176,19 @@ body.print-single .brief.print-target{display:block;}
 .alert{display:flex; gap:10px; padding:9px 13px; border-radius:9px; margin-bottom:7px; font-size:12.5px; align-items:baseline;}
 .alert.warn{background:var(--warn-soft);}
 .alert.bad{background:var(--bad-soft);}
+/* ── the line map (step 3) ── */
+.tubewrap{overflow-x:auto; padding:2px 0;}
+.tube{display:block; min-width:1180px; color:var(--ink);}
+.tube .ln{fill:none; stroke-linecap:round; stroke-linejoin:round; stroke-width:7; transition:opacity .12s;}
+.tube.hl .ln{opacity:.13;} .tube.hl .ln.on{opacity:1;}
+.tube.hl .st{opacity:.2;} .tube.hl .st.on{opacity:1;}
+.tube .st{transition:opacity .12s;}
+.tube text{font:600 10.5px -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; fill:currentColor; stroke:var(--card); stroke-width:3.6px; paint-order:stroke fill; stroke-linejoin:round;}
+.tube text.sub{font-weight:500; font-size:9.5px; fill:var(--ink3);}
+.tube text.cn{font-weight:700; font-size:9.5px;}
+.tube text.dl{font-weight:800; font-size:11px; fill:#fff; stroke:none;}
+.tube .ic{fill:var(--card); stroke:currentColor; stroke-width:2.6;}
+.tube .sn{stroke:var(--card); stroke-width:2.4;}
 /* ── roadmap thesis + plan (step 2) ── */
 .thesis{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 10%,var(--card)),var(--card));}
 .thesis .tin{width:100%; border:none; background:none; color:var(--ink); font:inherit; font-size:19px; font-weight:800; padding:0; outline:none;}
@@ -1790,8 +1803,123 @@ function vPlan(){
     <div class="hint" style="margin-top:7px">${esc(periodLabel()||'Pick a start date')}${cap!=null?` · contract: <b>${perMonth()}/month pro-rated over ${perWeeks()} week${perWeeks()>1?'s':''} = ${cap} concepts</b> · set manually by the strategist`:''} · variants don’t count here: the contract is measured in concepts.</div>
   </div></div>`;
 }
-function vTube(lanes,opts){return '';}      /* step 3: the line map */
-function hlLane(i){}                        /* step 3 */
+/* ═══════════ THE LINE MAP (lab it2) — the roadmap as a transit network.
+   One swimlane = one LINE; stations CTP → Segment → Angle; a value shared by two
+   lanes is ONE hollow station (an interchange: they inherit each other's evidence).
+   After the Angle the line fans out into its concepts; the DELIVERY is the terminus
+   (one line = one delivery — running a test again means duplicating the line).
+   Station stats show the Strategy Layer's validation for now; the evidence numbers
+   (confidence/effect) land with the knowledge engine in step 5. */
+const TX={head:34,ctp:212,seg:452,ang:688,con:900,end:1180};
+const CONC_GAP=26, MIN_GAP=56, TUBE_TOP=40;
+const trunc=(t,n)=>String(t).length>n?String(t).slice(0,n-1)+'…':String(t);
+function layerValOf(k,v){
+  if(k==='ctp')return (B.layer.ctps.find(x=>x.name===v)||{}).val||'';
+  if(k==='segment')return (B.layer.segments.find(x=>x.name===v)||{}).val||'';
+  if(k==='angle')return (B.layer.angles.find(x=>x.name===v)||{}).val||'';
+  return '';
+}
+function tubeModel(lanes){
+  const nums=conceptNumbers(lanes);
+  let y=TUBE_TOP;
+  const L=laneOrder(lanes).map(({l,i},pos)=>{
+    const n=Math.max(1,+l.concepts||1), h=Math.max(50,n*CONC_GAP+18);
+    const o={...l,i,pos,color:TUBE_C(i),n,nums:nums[i],y:y+h/2,h}; y+=h; return o;});
+  const H=y+TUBE_TOP-6;
+  const nodes={}, cols=[['ctp',TX.ctp],['segment',TX.seg],['angle',TX.ang]];
+  cols.forEach(([k,x])=>{
+    const g={}; L.forEach(l=>{const v=l[k]||'-';(g[v]=g[v]||[]).push(l);});
+    const arr=Object.entries(g).map(([v,ls])=>({k,v,ls,x,y:ls.reduce((a,b)=>a+b.y,0)/ls.length}));
+    arr.sort((a,b)=>a.y-b.y);
+    for(let i=1;i<arr.length;i++)if(arr[i].y-arr[i-1].y<MIN_GAP)arr[i].y=arr[i-1].y+MIN_GAP;
+    arr.forEach(n=>nodes[k+''+n.v]=n);
+  });
+  return {L,H:Math.max(H,TUBE_TOP*2+40),nodes,nodeOf:(k,v)=>nodes[k+''+(v||'-')]};
+}
+function elbow(x1,y1,x2,y2){
+  const dy=y2-y1;
+  if(Math.abs(dy)<0.6)return `M${x1},${y1.toFixed(1)} L${x2},${y2.toFixed(1)}`;
+  const a=Math.abs(dy), m=Math.max(x1+12,x2-16-a);
+  return `M${x1},${y1.toFixed(1)} L${m.toFixed(1)},${y1.toFixed(1)} L${(m+a).toFixed(1)},${y2.toFixed(1)} L${x2},${y2.toFixed(1)}`;
+}
+function vTube(lanes,opts){
+  opts=opts||{};
+  const SVGID=opts.id||'tubesvg';
+  if(!lanes.length)return `<div class="card"><div class="card-h"><h3>\u{1F687} The line map</h3>
+    <span class="hint">every swimlane is a line — shared dimensions become interchanges</span></div>
+    <div class="card-b"><div class="hint">Nothing running yet. Add the first swimlane and its line appears here, with its delivery as terminus.</div></div></div>`;
+  const M=tubeModel(lanes);
+  const edges=[];
+  M.L.forEach(l=>{
+    const a=M.nodeOf('ctp',l.ctp), b=M.nodeOf('segment',l.segment), c=M.nodeOf('angle',l.angle);
+    edges.push({l,k:'head'+l.i,x1:TX.head+30,y1:l.y,n2:a});
+    edges.push({l,k:a.v+'||'+b.v+'|2',n1:a,n2:b});
+    edges.push({l,k:b.v+'||'+c.v+'|3',n1:b,n2:c});
+  });
+  const grp={}; edges.forEach(e=>{(grp[e.k]=grp[e.k]||[]).push(e);});
+  const paths=[];
+  Object.values(grp).forEach(g=>g.forEach((e,j)=>{
+    const off=(j-(g.length-1)/2)*4.6;
+    const x1=e.n1?e.n1.x:e.x1, y1=(e.n1?e.n1.y+off:e.y1), x2=e.n2.x, y2=e.n2.y+off;
+    paths.push(`<path class="ln l${e.l.i}" stroke="${e.l.color}" d="${elbow(x1,y1,x2,y2)}"><title>${esc(e.l.ctp)} · ${esc(e.l.segment)} · ${esc(e.l.angle)} — D${String(e.l.delivery||0).padStart(3,'0')}</title></path>`);
+  }));
+  M.L.forEach(l=>{
+    const c=M.nodeOf('angle',l.angle), y0=l.y-(l.n-1)*CONC_GAP/2;
+    for(let k=0;k<l.n;k++)paths.push(`<path class="ln l${l.i}" stroke="${l.color}" stroke-width="4.2" d="${elbow(c.x,c.y,TX.con,y0+k*CONC_GAP)}"></path>`);
+  });
+  const st=[];
+  ['ctp','segment','angle'].forEach(k=>{
+    const seen=new Set();
+    M.L.forEach(l=>{const n=M.nodeOf(k,l[k]); if(seen.has(n.v))return; seen.add(n.v);
+      const multi=n.ls.length>1, val=layerValOf(k,n.v);
+      const cls=n.ls.map(x=>'l'+x.i).join(' ');
+      const tip=esc(n.v)+(val?' — Strategy Layer: '+val:'')
+        +(multi?'\n\nINTERCHANGE: '+n.ls.length+' lines pass through here ('+n.ls.map(x=>'D'+(x.delivery||'?')).join(', ')+'). They share whatever this dimension teaches, so neither can be read alone.':'');
+      st.push(`<g class="st ${cls}"><title>${tip}</title>
+        ${multi?`<circle class="ic" cx="${n.x}" cy="${n.y.toFixed(1)}" r="9"></circle>`
+               :`<circle class="sn" cx="${n.x}" cy="${n.y.toFixed(1)}" r="6.5" fill="${n.ls[0].color}"></circle>`}
+        <text x="${n.x}" y="${(n.y-15).toFixed(1)}" text-anchor="middle">${esc(trunc(n.v,30))}</text>
+        <text class="sub" x="${n.x}" y="${(n.y+22).toFixed(1)}" text-anchor="middle">${esc(val||'')}${multi?(val?' · ':'')+'⇄ '+n.ls.length+' lines':''}</text></g>`);
+    });
+  });
+  M.L.forEach(l=>{
+    const d=l.delivery?'D'+String(l.delivery).padStart(3,'0'):'D—';
+    st.push(`<g class="st l${l.i}"><title>Swimlane ${l.i+1} — ${esc(l.ctp)} · ${esc(l.segment)} · ${esc(l.angle)} · ${esc(l.funnel)}/${esc(l.phase)}
+${esc(l.hypothesis||'')}</title>
+      <rect x="${TX.head-4}" y="${(l.y-13).toFixed(1)}" width="66" height="26" rx="8" fill="${l.color}"></rect>
+      <text class="dl" x="${TX.head+29}" y="${(l.y+3.5).toFixed(1)}" text-anchor="middle">${d}</text>
+      <text class="sub" x="${TX.head+29}" y="${(l.y+24).toFixed(1)}" text-anchor="middle">${esc(l.funnel)} · ${esc(l.phase)}</text></g>`);
+    const y0=l.y-(l.n-1)*CONC_GAP/2;
+    for(let k=0;k<l.n;k++){
+      const y=y0+k*CONC_GAP, cn='C'+String(l.nums[k]).padStart(3,'0');
+      const sp=(l.conceptSpecs||[])[k];
+      const cast=(l.castings||[]), fmt=(l.formats||[]);
+      const tail=sp?[sp.format||'', sp.casting?trunc(sp.casting,22):''].filter(Boolean).join(' · ')
+        :[fmt.length===1?fmt[0]:fmt.length?fmt.length+' fmt':'',cast.length===1?trunc(cast[0],20):cast.length?cast.length+' castings':''].filter(Boolean).join(' · ');
+      const ctip=cn+(l.variants?' × '+l.variants+' variant(s)':'')
+        +(sp?('\nCasting: '+esc(sp.casting||'— assigned in the sheet')+'\nFormat: '+esc(sp.format||'— assigned in the sheet')+(sp.route&&menuOf(sp.route)?'\nRoute: '+esc(menuOf(sp.route).name):''))
+          :(cast.length?'\nCasting menu: '+esc(cast.join(', ')):'')+(fmt.length?'\nFormat: '+esc(fmt.join('/')):''));
+      st.push(`<g class="st l${l.i}"><title>${ctip}</title>
+        <circle class="sn" cx="${TX.con}" cy="${y.toFixed(1)}" r="5" fill="${l.color}"></circle>
+        <text class="cn" x="${TX.con+11}" y="${(y+3.5).toFixed(1)}">${cn}${l.variants?` <tspan class="sub">×${l.variants}</tspan>`:''}</text>
+        ${tail?`<text class="sub" x="${TX.con+64}" y="${(y+3.5).toFixed(1)}">${esc(trunc(tail,32))}</text>`:''}</g>`);
+    }
+  });
+  const inter=Object.values(M.nodes).filter(n=>n.ls.length>1).length;
+  const svg=`<svg class="tube" id="${SVGID}" viewBox="0 0 ${TX.end} ${M.H}" height="${M.H}" onmouseleave="hlLane(null)">
+    ${paths.join('')}${st.join('')}
+  </svg>`;
+  if(opts.raw)return svg;
+  return `<div class="card"><div class="card-h"><h3>\u{1F687} The line map</h3>
+    <span class="hint">${M.L.length} line${M.L.length>1?'s':''} · ${inter} interchange${inter===1?'':'s'} · concepts from
+      <input class="dnum" style="width:56px!important;border:1px solid var(--line2);background:var(--card2);color:var(--ink);border-radius:7px;padding:2px 4px;font:inherit;font-size:11.5px" value="${+RM().conceptStart||1}" title="First concept number. The rest follow in one ascending run, ordered by delivery." onchange="RM().conceptStart=+this.value||1;save();render()"></span>
+    ${opts.acts||''}</div>
+  <div class="card-b"><div class="tubewrap">${svg}</div>
+  <div class="hint" style="margin-top:8px">Hollow station = <b>interchange</b>: two or more lines pass through the same dimension, so they inherit each other's evidence — and neither can be read alone. A filled station belongs to one line. The terminus is the <b>delivery</b>: one line = one delivery, so to run the same test again later you duplicate the line. The note under each station is the Strategy Layer's validation (evidence numbers arrive with the knowledge engine).</div></div></div>`;
+}
+function hlLane(i){const e=document.getElementById('tubesvg'); if(!e)return;
+  e.classList.toggle('hl',i!=null);
+  e.querySelectorAll('.ln,.st').forEach(n=>n.classList.toggle('on',i!=null&&n.classList.contains('l'+i)));}
 function vRmExport(){return '';}            /* step 4: the export hub */
 
 function vRoadmap(){
