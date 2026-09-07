@@ -176,6 +176,31 @@ body.print-single .brief.print-target{display:block;}
 .alert{display:flex; gap:10px; padding:9px 13px; border-radius:9px; margin-bottom:7px; font-size:12.5px; align-items:baseline;}
 .alert.warn{background:var(--warn-soft);}
 .alert.bad{background:var(--bad-soft);}
+/* ── roadmap composer (from roadmap-lab, step 1) ── */
+.tk.act,.ph.act{outline:2px solid var(--accent); outline-offset:2px;}
+.ph{cursor:pointer;}
+.secs{display:flex; flex-direction:column; gap:6px;}
+.sec{border:1px solid var(--line); border-radius:11px; overflow:hidden;}
+.sec.open{border-color:var(--accent);}
+.sech{display:flex; align-items:center; gap:9px; padding:7px 11px; cursor:pointer; background:var(--card2);}
+.sec.open .sech{background:color-mix(in srgb,var(--accent) 9%,var(--card2));}
+.secn{font-size:10.5px; font-weight:800; letter-spacing:.05em; text-transform:uppercase; color:var(--ink3); width:64px; flex:none;}
+.secv{font-size:12.5px; font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.secv.em{font-weight:500; color:var(--ink3);}
+.seca{font-size:11px; color:var(--ink3);}
+.seccount{background:var(--accent); color:#fff; font-size:10px; font-weight:800; border-radius:6px; padding:1px 6px;}
+.secb{padding:10px 11px; border-top:1px solid var(--line);}
+.batch{background:var(--accent); color:#fff; font-size:11px; font-weight:800; border-radius:7px; padding:3px 9px;}
+table.k{width:100%; border-collapse:collapse; font-size:12.5px;}
+table.k th{text-align:left; font-size:10.5px; letter-spacing:.05em; text-transform:uppercase; color:var(--ink3); font-weight:700; padding:6px 8px; border-bottom:1px solid var(--line);}
+table.k td{padding:7px 8px; border-bottom:1px solid var(--line); vertical-align:middle;}
+table.k tr:last-child td{border-bottom:none;}
+table.k.specs td{padding:5px 6px;}
+table.k.specs select{width:100%; border:1px solid var(--line2); background:var(--card2); color:var(--ink); border-radius:8px; padding:5px 7px; font:inherit; font-size:12px;}
+.lanehead{display:flex; align-items:center; gap:7px; margin-bottom:5px;}
+.lanedot{width:11px; height:11px; border-radius:3px; flex:none;}
+.dnum{width:62px!important; text-align:center; font-weight:700;}
+.consol{background:var(--good); color:#fff; font-size:11px; font-weight:800; letter-spacing:.05em; border-radius:7px; padding:3px 9px;}
 @media print{
   .topbar,.shead,.savebar,.no-print{display:none !important;}
   body{background:#fff; color:#000;}
@@ -213,6 +238,25 @@ const FUNNELS=['TOFU','MOFU','BOFU'];
 const SHEET_COLS=['BRAND','Status','Delivery Number','Concept Number','Scripts Due Date','Footage Request Due','Brief Due Date','Delivery Due Date','Strategist','Owner','Brief Link or Slide','Footage Request Link','Visual Reference/Slide Link','Concept Name','Variant','New / Iteration','Format','Target Platform','Product','Hypothesis','CTP','Segment','Angle','Funnel Level','Phase','Visual Hook','Talent','Visual Style','Offer Type','Variation Final Name','Sizes'];
 const SHEET_KEYS=['brand','status','d','c','scriptsDue','footageDue','briefDue','deliveryDue','strategist','owner','briefLink','footageLink','visualRef','conceptName','variant','newIter','format','platform','product','hypothesis','ctp','segment','angle','funnel','phase','visualHook','talent','visualStyle','offerType','finalName','sizes'];
 const AD_FORMATS=['VID','STA','GIF','CAR','THU'];
+/* THE MENU — Ready Set's production routes, lifted from Creative Menu/CreativeMenu.html (SERVICES).
+   `bd` = business days read from the PESSIMISTIC end of the quoted range ("1-2 days"→2, "2-4 weeks"→20).
+   ⚠ QUOTED turnarounds, not measured cycle time — replace with production data (roadmap-lab FINAL SPEC §6.3.4).
+   ⚠ Future: bd becomes a function of (route, client skin). TBD/PARKED routes carry bd:null. */
+const MENU=[
+ {id:'STATIC',      name:'Static Ad',                dept:'DANDA',        tl:'1 day',    bd:1,    cost:200,  team:'Designer'},
+ {id:'GIF',         name:'GIF',                      dept:'DANDA',        tl:'1-2 days', bd:2,    cost:220,  team:'Designer / Animator'},
+ {id:'ANIM_SIMPLE', name:'Animation — Simple',       dept:'DANDA',        tl:'1-2 days', bd:2,    cost:300,  team:'Designer / Animator'},
+ {id:'ANIM_MID',    name:'Animation — Mid',          dept:'DANDA',        tl:'5-7 days', bd:7,    cost:700,  team:'Animator (lead)'},
+ {id:'ANIM_COMPLEX',name:'Animation — Complex',      dept:'DANDA',        tl:'2-4 weeks',bd:20,   cost:1500, team:'Full animation team'},
+ {id:'UGC_A',       name:'UGC — Route A (Internal)', dept:'All',          tl:'5 days',   bd:5,    cost:850,  team:'Coord/Prod/Dir/Editor'},
+ {id:'UGC_B',       name:'UGC — Route B (Talent)',   dept:'Talent + PM',  tl:'5-6 days', bd:6,    cost:900,  team:'Talent + PM'},
+ {id:'UGC_C',       name:'UGC — Route C (Producer)', dept:'Internal',     tl:'3-4 days', bd:4,    cost:350,  team:'Content Producer'},
+ {id:'EDITOR',      name:'Editor Ad',                dept:'Ad Editing',   tl:'1-3 days', bd:3,    cost:250,  team:'Sr/Asst Editor'},
+ {id:'CREATOR',     name:'Creator (4-Ad Bundle)',    dept:'Creator + PM', tl:'TBD',      bd:null, cost:2500, team:'Creator + PM'},
+ {id:'PRIME_UGC',   name:'Prime UGC / Elevated',     dept:'All',          tl:'2 weeks',  bd:10,   cost:null, team:'Full crew'},
+ {id:'CTV',         name:'CTV (Connected TV)',       dept:'All',          tl:'5-6 weeks',bd:30,   cost:null, team:'Full production'}];
+const menuOf=id=>MENU.find(m=>m.id===id)||null;
+const ROUTE_DEFAULT={STA:'STATIC',GIF:'GIF',CAR:'STATIC',THU:'STATIC',VID:''};
 
 /* ══════════ Stately seed — Strategy Layer from "Stately - Database - Strategy Layer.pdf" ══════════ */
 /* ══ MONTHLY PERFORMANCE (Motion pull 2026-09-06) — the time axis of the Performance module ══
@@ -1483,9 +1527,212 @@ let comp=null; // composer state
 function startRoadmap(){
   if(!layerComplete()){alert('The Strategy Layer is incomplete — complete Product (with value props & differentiators) and at least 1 CTP, 1 Segment and 1 Angle first.');return;}
   if(!B.draft)B.draft={lanes:[]};
-  comp={step:0,ctp:'',segment:'',angle:'',funnel:'',phase:'',hypothesis:'',concepts:1,variants:'',notes:'',castings:[],formats:[]};
+  comp=rmBlank();
   go('roadmap');
 }
+
+/* ═══════════ ROADMAP STATE (per brand, persisted inside B) ═══════════
+   Integrated from roadmap-lab (FINAL SPEC §6.1) — thesis, period as start+weeks,
+   contracted capacity, concept numbering. HubSpot wiring pending: contract.perMonth
+   starts null = "no data", the strategist sets it manually. */
+function RM(){
+  const r=B.rm=B.rm||{};
+  r.thesis=r.thesis||{title:'',period:'',text:'',from:'',to:''};
+  if(!r.period||!r.period.start){const d=new Date(); d.setDate(1); d.setMonth(d.getMonth()+1);
+    r.period={start:`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-01`,weeks:4};}
+  r.deliveryDates=r.deliveryDates||{};
+  r.contract=r.contract||{perMonth:null,note:''};
+  if(r.conceptStart==null)r.conceptStart=rmDefaultConceptStart();
+  return r;
+}
+/* next C# after everything this brand has already numbered (sheet, seeds, Motion pull) */
+function rmDefaultConceptStart(){
+  let mx=0;
+  const eat=v=>{const n=parseInt(String(v||'').replace(/\D/g,''),10); if(n&&n>mx)mx=n;};
+  ((B.sheet||{}).rows||[]).forEach(r=>eat(r.c));
+  const def=BRAND_DEFS.find(b=>b.code===B.code);
+  if(def&&def.perf){PERF_SEED.rows.forEach(r=>eat(r.c)); Object.keys(PERF_SEED.dims).forEach(k=>eat(k.split('-')[1]));
+    if(typeof PERF_MONTHS!=='undefined')PERF_MONTHS.months.forEach(m=>m.rows.forEach(r=>eat(r.c)));}
+  return mx+1;
+}
+function rmDefaultDelivery(){
+  let mx=0;
+  const eat=v=>{const n=parseInt(String(v||'').replace(/\D/g,''),10); if(n&&n>mx)mx=n;};
+  ((B.sheet||{}).rows||[]).forEach(r=>eat(r.d));
+  const def=BRAND_DEFS.find(b=>b.code===B.code);
+  if(def&&def.perf){PERF_SEED.rows.forEach(r=>eat(r.d));
+    if(typeof PERF_MONTHS!=='undefined')PERF_MONTHS.months.forEach(m=>m.rows.forEach(r=>eat(r.d)));}
+  return mx;
+}
+/* One line = one delivery. A new lane proposes the next free delivery number. */
+function nextDelivery(){const ds=((B.draft||{}).lanes||[]).map(l=>+l.delivery||0);
+  return Math.max(rmDefaultDelivery(),...ds,0)+1;}
+
+/* ── dates ── */
+const parseYMD=v=>{const [a,b,c]=String(v||'').split('-').map(Number); return (a&&b&&c)?new Date(a,b-1,c):null;};
+const ymdOf=d=>`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+const addDays=(d,n)=>{const x=new Date(d); x.setDate(x.getDate()+n); return x;};
+const fmtD=d=>d?d.toLocaleString('en-US',{month:'short',day:'numeric'}):'—';
+const bdToCal=bd=>Math.ceil(bd*7/5);
+const weekday=d=>{const x=new Date(d); const w=x.getDay(); if(w===6)x.setDate(x.getDate()-1); if(w===0)x.setDate(x.getDate()-2); return x;};
+const perWeeks=()=>Math.max(1,+RM().period.weeks||1);
+const perStart=()=>parseYMD(RM().period.start);
+const perDays=()=>perWeeks()*7;
+const perEnd=()=>{const st=perStart(); return st?addDays(st,perDays()-1):null;};
+function periodLabel(){
+  const st=perStart(); if(!st)return '';
+  const en=perEnd();
+  const sameYear=st.getFullYear()===en.getFullYear();
+  return `${fmtD(st)}${sameYear?'':', '+st.getFullYear()} – ${fmtD(en)}, ${en.getFullYear()} · ${perWeeks()} week${perWeeks()>1?'s':''}`;
+}
+/* the contract is monthly; null = no data yet (HubSpot wiring pending) */
+const perMonth=()=>RM().contract.perMonth;
+const rmCapacity=()=>perMonth()==null?null:Math.round(perMonth()*perWeeks()/(52/12));
+const plannedConcepts=lanes=>(lanes||[]).reduce((a,l)=>a+(+l.concepts||0),0);
+function rmSetPer(k,v){RM().period[k]=(k==='weeks'?Math.max(1,Math.min(52,+v||1)):v); RM().deliveryDates={}; save(); render();}
+function rmSetContract(v){const n=+v; RM().contract.perMonth=(v===''||isNaN(n))?null:Math.max(0,n); save(); render();}
+function setTh(k,v){
+  const r=RM(); r.thesis[k]=v;
+  if(B.roadmap){B.roadmap.thesis=B.roadmap.thesis||{}; B.roadmap.thesis[k]=v;
+    if(k==='title')B.roadmap.title=(v?v+' — ':'')+B.roadmap.period+' — '+B.name+' Creative Roadmap';}
+  save();
+}
+function rmSetDue(d,v){if(v)RM().deliveryDates[d]=v; else delete RM().deliveryDates[d]; save(); render();}
+function rmDueDate(d,idx,n){
+  if(RM().deliveryDates[d])return parseYMD(RM().deliveryDates[d]);
+  const st=perStart(); if(!st)return null;
+  return weekday(addDays(st,Math.round((idx+1)*perDays()/n)-1));
+}
+function rmDeliveries(lanes){
+  const g={};
+  (lanes||[]).forEach((l,i)=>{const d=+l.delivery||0; if(!d)return; (g[d]=g[d]||[]).push({...l,_i:i});});
+  return Object.keys(g).map(Number).sort((a,b)=>a-b).map(d=>({d,lanes:g[d]}));
+}
+/* the resolved production plan per delivery — due dates default to an even weekday spread
+   across the period (the production-calendar module makes them editable; step 7) */
+function rmPlan(lanes){
+  const ds=rmDeliveries(lanes), n=ds.length||1;
+  return ds.map((g,i)=>{
+    const specs=g.lanes.flatMap(l=>(l.conceptSpecs||[]).slice(0,Math.max(1,+l.concepts||1)));
+    const routes=specs.map(x=>menuOf(x.route)).filter(Boolean);
+    const unset=specs.length-routes.length;
+    const bd=routes.length?Math.max(...routes.map(m=>m.bd||0)):0;
+    const cost=routes.reduce((a,m)=>a+(m.cost||0),0);
+    const due=rmDueDate(g.d,i,n);
+    const start=due&&bd?addDays(due,-(bdToCal(bd)-1)):null;
+    return {...g,concepts:specs.length,routes,unset,bd,cost,due,start,
+      late:start&&perStart()?start<perStart():false};
+  });
+}
+function dueMapOf(lanes){const m={}; rmPlan(lanes).forEach(x=>{m[x.d]=x;}); return m;}
+
+/* ═══════════ THE COMPOSER — multi-select → cartesian batch (lab it3) ═══════════
+   Every dimension holds an ARRAY: two personas × three angles composes six swimlanes
+   in one pass. Casting/format/route are decided PER CONCEPT (comp.specs); the lane
+   keeps castings[]/formats[] as the de-duplicated union so the sheet's rule
+   ("one → pre-fill, several → assign per row") keeps working unchanged. */
+function rmBlank(){return {open:null,f:'',ctp:[],segment:[],angle:[],funnel:[],phase:[],hypothesis:'',concepts:1,variants:'',notes:'',specs:[{casting:'',format:'',route:''}],delivery:''};}
+const STEPS=['ctp','segment','angle','funnel','phase'];
+const STEP_LBL={ctp:'CTP',segment:'Segment',angle:'Angle',funnel:'Funnel',phase:'Phase'};
+const OPTS={ctp:()=>B.layer.ctps.map(c=>c.name),segment:()=>B.layer.segments.map(s=>s.name),angle:()=>B.layer.angles.map(a=>a.name),funnel:()=>FUNNELS,phase:()=>PHASES};
+/* a section is open while it has no selection, or while explicitly opened to add a 2nd value —
+   the plain path stays five clicks, a broad round is one extra click per extra value */
+const isOpen=k=>comp.open===k||(!comp.open&&k===STEPS.find(x=>!(comp[x]||[]).length));
+function pickTk(k,v){
+  const a=comp[k]=comp[k]||[]; const i=a.indexOf(v);
+  if(i>=0)a.splice(i,1); else a.push(v);
+  if(k==='segment')(comp.specs||[]).forEach(sp=>{
+    if(sp.casting&&!comp.segment.some(sg=>((B.layer.segments.find(x=>x.name===sg)||{}).casting||[]).includes(sp.casting)))sp.casting='';});
+  comp.f=''; render();
+}
+function openSec(k){comp.open=comp.open===k?null:k;comp.f='';render();}
+function setF(v){comp.f=v; const el=document.getElementById('chipbox-angle'); if(el)el.innerHTML=chipsHtml('angle');}
+function setConcepts(n){
+  n=Math.max(1,+n||1); comp.concepts=n;
+  const sp=comp.specs||[];
+  while(sp.length<n)sp.push({casting:'',format:'',route:''});
+  comp.specs=sp.slice(0,n); render();
+}
+function setSpec(i,k,v){const sp=(comp.specs[i]=comp.specs[i]||{casting:'',format:'',route:''});
+  sp[k]=v;
+  if(k==='format'&&!sp.route&&ROUTE_DEFAULT[v])sp.route=ROUTE_DEFAULT[v];
+  render();}
+function specAll(k){const v=(comp.specs[0]||{})[k]||''; comp.specs.forEach(x=>x[k]=v); render();}
+/* the composer's casting menu: the union of the selected segments' talent menus */
+function castMenu(){const out=[];
+  (comp.segment||[]).forEach(n=>{const sg=B.layer.segments.find(x=>x.name===n); if(sg)out.push([sg.name,sg.casting||[]]);});
+  return out;}
+function chipsHtml(cur){
+  const f=cur==='angle'?(comp.f||'').toLowerCase():'';
+  const list=OPTS[cur]().filter(Boolean).filter(v=>!f||v.toLowerCase().includes(f));
+  if(!list.length)return '<div class="hint">Nothing matches — clear the filter.</div>';
+  return list.map(v=>{
+    let tip='';
+    if(cur==='segment'){const sg=B.layer.segments.find(x=>x.name===v); if(sg)tip=`${sg.age}${(sg.casting||[]).length?' — '+sg.casting.join(' · '):''}`;}
+    if(cur==='ctp'){const pr=B.layer.ctps.find(x=>x.name===v); if(pr&&pr.insight)tip=pr.insight;}
+    return `<span class="chip ${(comp[cur]||[]).includes(v)?'sel':''}" ${tip?`title="${esc(tip)}"`:''} onclick="pickTk('${cur}','${esc(v).replace(/'/g,"\\'")}')">${esc(v)}</span>`;
+  }).join('');
+}
+function chipKey(ev){
+  if(ev.key==='Enter'){const first=document.querySelector('#chipbox-angle .chip'); if(first)first.click();}
+  else if(ev.key==='Escape')setF('');
+}
+/* the cartesian product of everything selected — the swimlanes this composer will emit */
+function combos(){
+  if(!STEPS.every(k=>(comp[k]||[]).length))return [];
+  const out=[];
+  comp.ctp.forEach(c=>comp.segment.forEach(s=>comp.angle.forEach(a=>comp.funnel.forEach(f=>comp.phase.forEach(ph=>{
+    out.push({ctp:c,segment:s,angle:a,funnel:f,phase:ph});})))));
+  return out;
+}
+function addLane(){
+  const cs=combos();
+  if(!cs.length){alert('Pick at least one value in each of the five steps.');return;}
+  if(!comp.hypothesis.trim()){alert('Write a brief hypothesis — it is what makes this a test.');return;}
+  if(comp._edit!==undefined&&cs.length>1){if(!confirm('You are editing one swimlane but selected '+cs.length+' combinations.\n\nThe first replaces it; the other '+(cs.length-1)+' are added after it. Continue?'))return;}
+  if(cs.length>12&&!confirm('This composes '+cs.length+' swimlanes ('+cs.length*(+comp.concepts||1)+' concepts). Continue?'))return;
+  const dlv=+comp.delivery||nextDelivery();
+  const made=cs.map(c=>{
+    const menu=((B.layer.segments.find(x=>x.name===c.segment)||{}).casting)||[];
+    /* a casting from another segment's menu cannot travel to this lane — dropped, not mis-assigned */
+    const specs=(comp.specs||[]).slice(0,+comp.concepts||1)
+      .map(x=>({casting:menu.includes(x.casting)?x.casting:'',format:x.format||'',route:x.route||''}));
+    return {...c,hypothesis:comp.hypothesis,concepts:+comp.concepts||1,variants:comp.variants?+comp.variants:'',
+      notes:comp.notes,conceptSpecs:specs,
+      castings:[...new Set(specs.map(x=>x.casting).filter(Boolean))],
+      formats:[...new Set(specs.map(x=>x.format).filter(Boolean))],delivery:dlv};});
+  if(comp._edit!==undefined){B.draft.lanes.splice(comp._edit,1,...made);}
+  else made.forEach(l=>B.draft.lanes.push(l));
+  comp=rmBlank(); save(); render();
+}
+function editLane(i){const l=B.draft.lanes[i];
+  const n=Math.max(1,+l.concepts||1);
+  const specs=(l.conceptSpecs||[]).map(x=>({...x}));
+  while(specs.length<n)specs.push({casting:(l.castings||[])[0]||'',format:(l.formats||[])[0]||'',route:''});
+  comp={...rmBlank(),ctp:[l.ctp],segment:[l.segment],angle:[l.angle],funnel:[l.funnel],phase:[l.phase],
+    hypothesis:l.hypothesis,concepts:n,variants:l.variants,notes:l.notes,delivery:l.delivery||'',
+    specs:specs.slice(0,n),_edit:i};
+  render();}
+/* same test, later delivery = a SECOND line — the copy is independent evidence */
+function dupLane(i){const l=B.draft.lanes[i];
+  B.draft.lanes.splice(i+1,0,{...l,castings:(l.castings||[]).slice(),formats:(l.formats||[]).slice(),conceptSpecs:(l.conceptSpecs||[]).map(x=>({...x})),delivery:nextDelivery()});
+  save();render();}
+function setDelivery(i,v){B.draft.lanes[i].delivery=+v||'';save();render();}
+/* concept numbers run in ONE ascending sequence across the roadmap, ordered by delivery */
+function laneOrder(lanes){return lanes.map((l,i)=>({l,i})).sort((a,b)=>(+a.l.delivery||9999)-(+b.l.delivery||9999)||a.i-b.i);}
+function conceptNumbers(lanes){
+  if(lanes.length&&lanes.every(l=>(l.conceptNums||[]).length))return Object.fromEntries(lanes.map((l,i)=>[i,l.conceptNums]));
+  const out={}; let c=+RM().conceptStart||1;
+  laneOrder(lanes).forEach(({l,i})=>{const n=Math.max(1,+l.concepts||1);out[i]=[];for(let k=0;k<n;k++)out[i].push(c++);});
+  return out;
+}
+
+/* ═══════════ stubs — replaced by the next integration steps (lab §6.6) ═══════════ */
+function vThesis(opts){return '';}          /* step 2: thesis + period + contracted capacity */
+function vTube(lanes,opts){return '';}      /* step 3: the line map */
+function hlLane(i){}                        /* step 3 */
+function vRmExport(){return '';}            /* step 4: the export hub */
+
 function vRoadmap(){
   if(B.roadmap&&!B.draft)return vRoadmapView();
   if(!B.roadmap&&!B.draft)return `<div class="shead"><h2>🗺️ Creative Roadmap</h2><span class="badge no">Incomplete</span>
@@ -1497,106 +1744,155 @@ function vRoadmap(){
     </div></div>`;
   return vBuilder();
 }
-function pickTk(k,v){comp[k]=v; if(k==='segment')comp.castings=[]; /* casting options belong to the segment */ if(comp.step<5)comp.step=['ctp','segment','angle','funnel','phase'].indexOf(k)+1; render();}
-function tglComp(key,v){const a=comp[key]=comp[key]||[]; const i=a.indexOf(v); i>=0?a.splice(i,1):a.push(v); render();}
 function vBuilder(){
-  const L=B.layer, d=B.draft;
-  const totC=d.lanes.reduce((a,l)=>a+(+l.concepts||0),0);
+  const d=B.draft;
+  if(!comp)comp=rmBlank();
+  const totC=plannedConcepts(d.lanes);
   const totA=d.lanes.reduce((a,l)=>a+((+l.concepts||0)*(+l.variants||1)),0);
-  const anyVar=d.lanes.some(l=>+l.variants>0);
-  const steps=['ctp','segment','angle','funnel','phase'];
-  const cur=steps[comp.step]||null;
-  const tk=(k,ph)=>comp[k]?`<span class="tk" onclick="comp.step=${steps.indexOf(k)};render()">${esc(comp[k])}</span>`:`<span class="ph">${ph}</span>`;
-  const chipsFor={ctp:L.ctps.map(c=>c.name),segment:L.segments.map(s=>s.name),angle:L.angles.map(a=>a.name),funnel:FUNNELS,phase:PHASES};
+  const cap=rmCapacity();
+  const sel=k=>(comp[k]||[]);
+  const tk=(k,ph)=>{const a=sel(k);
+    return a.length?`<span class="tk ${isOpen(k)?'act':''}" onclick="openSec('${k}')">${esc(a.length>2?a[0]+' +'+(a.length-1)+' more':a.join(' / '))}</span>`
+                   :`<span class="ph ${isOpen(k)?'act':''}" onclick="openSec('${k}')">${ph}</span>`;};
+  const cs=combos();
+  const nums=conceptNumbers(d.lanes);
+  const sec=k=>{const a=sel(k),op=isOpen(k);
+    return `<div class="sec ${op?'open':''}">
+      <div class="sech" onclick="openSec('${k}')">
+        <span class="secn">${STEP_LBL[k]}</span>
+        ${a.length?`<span class="secv">${esc(a.join(' · '))}</span>`:`<span class="secv em">choose…</span>`}
+        ${a.length>1?`<span class="seccount">${a.length}</span>`:''}
+        <span class="seca">${op?'▲':'✎'}</span></div>
+      ${op?`<div class="secb">
+        ${k==='angle'?`<input id="cfilter" placeholder="type to filter, Enter picks the first" value="${esc(comp.f)}" oninput="setF(this.value)" onkeydown="chipKey(event)" style="width:100%;max-width:300px;margin-bottom:8px;border:1px solid var(--line2);background:var(--card2);color:var(--ink);border-radius:8px;padding:4px 9px;font:inherit;font-size:12px">`:''}
+        <div class="chips" id="chipbox-${k}">${chipsHtml(k)}</div>
+        ${a.length?`<div class="hint" style="margin-top:6px">${a.length} selected — add more to compose every combination, or <a href="#" onclick="comp['${k}']=[];comp.open=null;render();return false" style="color:var(--accent)">clear</a>.</div>`:''}
+      </div>`:''}</div>`;};
   return `<div class="shead"><h2>🗺️ Creative Roadmap — builder</h2>
     <div class="acts"><button class="btn" onclick="B.draft=null;save();go('flow')">← Back (discard)</button></div></div>
+  ${vThesis()}
   <div class="tiles">
     <div class="tile"><div class="v">${d.lanes.length}</div><div class="l">Swimlanes</div></div>
     <div class="tile"><div class="v">${totC}</div><div class="l">Concepts</div></div>
-    ${anyVar?`<div class="tile"><div class="v">${totA}</div><div class="l">Total ads (with variants)</div></div>`:''}
-    <div class="tile"><div class="v" style="font-size:15px; padding-top:6px">${esc(L.product.name.slice(0,40))}</div><div class="l">Product (inherited)</div></div>
+    <div class="tile"><div class="v">${totA}</div><div class="l">Total ads (with variants)</div></div>
+    ${cap!=null?`<div class="tile"><div class="v" style="color:${totC>cap?'var(--bad)':totC===cap?'var(--good)':'inherit'}">${totC}/${cap}</div><div class="l">Contracted concepts · ${esc(periodLabel()||'no period')}</div></div>`:''}
   </div>
+  ${vTube(d.lanes)}
   <div class="rb-wrap">
     <div>
-      ${d.lanes.map((l,i)=>`<div class="lane"><div class="lt"><b>${i+1}.</b> ${esc(l.ctp)} · ${esc(l.segment)} · <b>${esc(l.angle)}</b> · ${esc(l.funnel)} · ${esc(l.phase)}</div>
+      ${d.lanes.map((l,i)=>`<div class="lane" style="border-left-color:${TUBE_C(i)}" onmouseenter="hlLane(${i})" onmouseleave="hlLane(null)">
+        <div class="lanehead"><span class="lanedot" style="background:${TUBE_C(i)}"></span>
+          <span style="font-size:11px;font-weight:700;color:var(--ink3)">DELIVERY</span>
+          <input class="dnum" type="number" min="1" value="${l.delivery||''}" placeholder="D#" title="One line = one delivery. Changing it reorders the map and renumbers the concepts." onchange="setDelivery(${i},this.value)" style="border:1px solid var(--line2);background:var(--card2);color:var(--ink);border-radius:8px;padding:3px 6px;font:inherit;font-size:12px">
+          <span style="margin-left:auto;font-size:11px;color:var(--ink3)">C${String((nums[i]||[0])[0]).padStart(3,'0')}${l.concepts>1?`–C${String((nums[i]||[0]).slice(-1)[0]).padStart(3,'0')}`:''}</span></div>
+        <div class="lt">${esc(l.ctp)} · ${esc(l.segment)} · <b>${esc(l.angle)}</b> · ${esc(l.funnel)} · ${esc(l.phase)}</div>
         <div class="lm">${l.concepts} concept(s)${l.variants?` × ${l.variants} variant(s)`:''} — ${esc((l.hypothesis||'').slice(0,80))}</div>
-        ${(l.castings||[]).length||(l.formats||[]).length?`<div class="lm">${(l.castings||[]).length?`🎭 ${esc(l.castings.join(', '))}`:''}${(l.castings||[]).length&&(l.formats||[]).length?' · ':''}${(l.formats||[]).length?`🎞 ${esc(l.formats.join('/'))}`:''}</div>`:''}
-        <div style="margin-top:6px"><button class="btn tiny" onclick="editLane(${i})">✎ Edit</button> <button class="rowdel" onclick="B.draft.lanes.splice(${i},1);save();render()">✕</button></div></div>`).join('')||'<div class="hint">No swimlanes yet — build the first one on the right.</div>'}
+        ${(l.conceptSpecs||[]).some(x=>x.casting||x.format)?`<div class="lm">${(l.conceptSpecs||[]).map((x,k)=>`C${String((nums[i]||[])[k]||0).padStart(3,'0')}: ${esc(x.format||'—')}${x.casting?' · 🎭 '+esc(x.casting):''}`).join(' &nbsp;|&nbsp; ')}</div>`
+          :(l.castings||[]).length||(l.formats||[]).length?`<div class="lm">${(l.castings||[]).length?`🎭 ${esc(l.castings.join(', '))}`:''}${(l.castings||[]).length&&(l.formats||[]).length?' · ':''}${(l.formats||[]).length?`🎞 ${esc(l.formats.join('/'))}`:''}</div>`:''}
+        <div style="margin-top:6px"><button class="btn tiny" onclick="editLane(${i})">✎ Edit</button>
+          <button class="btn tiny" onclick="dupLane(${i})" title="Same test, next delivery — a line carries one delivery, so running it again means a second line.">⧉ Duplicate</button>
+          <button class="rowdel" onclick="B.draft.lanes.splice(${i},1);save();render()">✕</button></div></div>`).join('')||'<div class="hint">No swimlanes yet — compose the first one on the right.</div>'}
       ${d.lanes.length?`<button class="btn primary big" style="width:100%; margin-top:10px" onclick="consolidate()">✓ Consolidate Roadmap</button>`:''}
     </div>
-    <div class="card"><div class="card-h"><h3>New swimlane</h3></div><div class="card-b">
+    <div class="card"><div class="card-h"><h3>${comp._edit!==undefined?'Editing swimlane '+(comp._edit+1):'Compose'}</h3>
+      ${cs.length>1?`<span class="batch">${cs.length} swimlanes × ${(+comp.concepts||1)} concept${(+comp.concepts||1)>1?'s':''} = ${cs.length*(+comp.concepts||1)} concepts</span>`:''}
+      ${comp._edit!==undefined?`<button class="btn tiny" style="margin-left:auto" onclick="comp=rmBlank();render()">Cancel</button>`:''}</div><div class="card-b">
       <div class="sentence">Test <b>${tk('ctp','select CTP')}</b> in <b>${tk('segment','…segment')}</b>, through the <b>${tk('angle','…angle')}</b> angle, at <b>${tk('funnel','…funnel level')}</b> as an <b>${tk('phase','…phase')}</b> play.</div>
-      ${cur?`<div style="margin-top:14px"><b style="font-size:13px">Select ${({ctp:'CTP',segment:'Segment',angle:'Angle',funnel:'Funnel Level',phase:'Phase'})[cur]}</b>
-        <div class="chips" style="margin-top:8px">${chipsFor[cur].filter(Boolean).map(v=>{
-          let tip=''; if(cur==='segment'){const s=L.segments.find(x=>x.name===v); if(s)tip=`${s.age}${(s.casting||[]).length?' — '+s.casting.join(' · '):''}`;}
-          if(cur==='ctp'){const p=L.ctps.find(x=>x.name===v); if(p&&p.insight)tip=p.insight;}
-          return `<span class="chip ${comp[cur]===v?'sel':''}" ${tip?`title="${esc(tip)}"`:''} onclick="pickTk('${cur}','${esc(v).replace(/'/g,"\\'")}')">${esc(v)}</span>`;}).join('')}</div></div>`:''}
-      ${comp.step>=5?`
-      <div class="f" style="margin-top:14px"><label>Hypothesis — why do you believe this combination will succeed? (brief)</label>
+      <div class="hint" style="margin:9px 0 4px">Click a step to reopen it and pick more than one value — the composer emits every combination.</div>
+      <div class="secs">${STEPS.map(sec).join('')}</div>
+      ${cs.length?`
+      <div class="f" style="margin-top:14px"><label>Hypothesis — why do you believe ${cs.length>1?'these combinations':'this combination'} will succeed?${cs.length>1?' <span style="text-transform:none;letter-spacing:0;font-weight:500;color:var(--ink3)">(shared by all '+cs.length+' — edit each lane afterwards to specialise)</span>':''}</label>
         <textarea oninput="comp.hypothesis=this.value">${esc(comp.hypothesis)}</textarea></div>
-      <div class="grid2" style="margin-top:10px">
-        <div class="f"><label>Number of concepts for this swimlane</label><input type="number" min="1" value="${comp.concepts}" oninput="comp.concepts=this.value"></div>
-        <div class="f"><label>Variants per concept (optional)</label><input type="number" min="0" value="${esc(comp.variants)}" oninput="comp.variants=this.value" placeholder="leave empty if undecided"></div>
+      <div class="grid2" style="margin-top:10px; grid-template-columns:1fr 1fr 1fr">
+        <div class="f"><label>Delivery</label><input type="number" min="1" value="${esc(comp.delivery)}" placeholder="${nextDelivery()}" title="One line = one delivery. Leave blank to take the next free number." oninput="comp.delivery=this.value"></div>
+        <div class="f"><label>Concepts each</label><input type="number" min="1" value="${comp.concepts}" onchange="setConcepts(this.value)"></div>
+        <div class="f"><label>Variants each</label><input type="number" min="0" value="${esc(comp.variants)}" oninput="comp.variants=this.value" placeholder="leave empty if undecided"></div>
       </div>
-      ${(()=>{const seg=L.segments.find(s=>s.name===comp.segment); const cast=(seg&&seg.casting)||[];
-        const multi=(label,opts,key,hint)=>`<div class="f" style="margin-top:10px"><label>${label}</label>
-          <div class="chips" style="margin-top:6px">${opts.map(o=>`<span class="chip ${(comp[key]||[]).includes(o)?'sel':''}" onclick="tglComp('${key}','${esc(o).replace(/'/g,"\\'")}')">${esc(o)}</span>`).join('')}</div>
-          ${hint?`<div class="hint" style="margin-top:4px">${hint}</div>`:''}</div>`;
-        return (cast.length?multi(`Suggested casting (multi) — ${esc(comp.segment)}’s talent menu`,cast,'castings','It’s a suggestion for who’s on camera, NOT a test variable. Pick one → it pre-fills the Talent column; pick several → assign per concept in the Strategy Sheet dropdown. To actually TEST a casting, promote it to a segment (↑ in the Strategy Layer).'):'')
-          +multi('Suggested format (multi)',AD_FORMATS,'formats','Pick one → pre-fills the Format column; several → assign per concept in the sheet.');})()}
-      <div class="f" style="margin-top:10px"><label>Notes to the creative team — what you have in mind: are all ads different? any through-line? anything goes</label>
+      ${(()=>{const n=Math.max(1,+comp.concepts||1), menu=castMenu(), specs=comp.specs||[];
+        const c0=(()=>{let c=+RM().conceptStart||1;const ls=(B.draft||{}).lanes||[];
+          ls.forEach(l=>{if((+l.delivery||9999)<(+comp.delivery||nextDelivery()))c+=Math.max(1,+l.concepts||1);});return c;})();
+        const opt=(v,sv)=>`<option value="${esc(v)}" ${sv===v?'selected':''}>${esc(v)}</option>`;
+        return `<div class="f" style="margin-top:12px"><label>Suggested casting &amp; format — per concept</label>
+        <table class="k specs"><tr><th style="width:56px">Concept</th><th>Suggested casting</th><th style="width:88px">Format</th><th style="width:172px">Production route <span class="hint" style="text-transform:none;letter-spacing:0">(Menu — quoted, not measured)</span></th></tr>
+        ${Array.from({length:n},(_,i)=>{const sp=specs[i]||{casting:'',format:'',route:''};return `<tr>
+          <td><b>C${String(c0+i).padStart(3,'0')}</b>${cs.length>1?'<span class="hint" style="display:block">×'+cs.length+' lanes</span>':''}</td>
+          <td><select onchange="setSpec(${i},'casting',this.value)">
+            <option value="">— pick in the sheet —</option>
+            ${menu.map(([sg,list])=>`<optgroup label="${esc(sg)}">${list.map(o=>opt(o,sp.casting)).join('')}</optgroup>`).join('')}
+          </select></td>
+          <td><select onchange="setSpec(${i},'format',this.value)"><option value="">—</option>${AD_FORMATS.map(o=>opt(o,sp.format)).join('')}</select></td>
+          <td><select onchange="setSpec(${i},'route',this.value)">
+            <option value="">— not scheduled —</option>
+            ${MENU.map(m=>`<option value="${m.id}" ${sp.route===m.id?'selected':''}>${esc(m.name)} · ${m.bd?m.bd+'d':'TBD'}${m.cost?' · $'+m.cost:''}</option>`).join('')}
+          </select>${sp.route&&menuOf(sp.route)?`<div class="hint" style="margin-top:2px">${esc(menuOf(sp.route).tl)} · ${esc(menuOf(sp.route).team)}</div>`:''}</td></tr>`;}).join('')}
+        </table>
+        ${n>1?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn tiny" onclick="specAll('casting')">Apply C1's casting to all</button><button class="btn tiny" onclick="specAll('format')">Apply C1's format to all</button><button class="btn tiny" onclick="specAll('route')">Apply C1's route to all</button></div>`:''}
+        <div class="hint" style="margin-top:5px">The <b>production route</b> is what the Creative Menu costs and times — an ad format doesn’t decide it (a VID can be a 3-day Editor Ad or a Creator bundle), so VID is left blank until you pick. Casting is who’s on camera, NOT a test variable — to TEST one, promote it to a segment (↑ in the Strategy Layer). Leaving a row blank hands that choice to the Strategy Sheet.${menu.length>1?' The menu is the union of the '+menu.length+' segments you picked; a casting that doesn’t belong to a lane’s own segment is dropped from that lane.':''}</div></div>`;})()}
+      <div class="f" style="margin-top:10px"><label>Notes to the creative team</label>
         <textarea oninput="comp.notes=this.value">${esc(comp.notes)}</textarea></div>
-      <button class="btn primary" style="margin-top:12px" onclick="addLane()">＋ Add swimlane</button>`:''}
+      <button class="btn primary" style="margin-top:12px" onclick="addLane()">＋ ${comp._edit!==undefined?'Save swimlane':'Add '+(cs.length>1?cs.length+' swimlanes':'swimlane')}</button>`
+      :`<div class="hint" style="margin-top:12px">Pick at least one value in each step — then the hypothesis and volume appear.</div>`}
     </div></div>
-  </div>`;
+  </div>${vRmExport()}`;
 }
-function addLane(){
-  if(!comp.ctp||!comp.segment||!comp.angle||!comp.funnel||!comp.phase){alert('Complete the sentence first: CTP, Segment, Angle, Funnel and Phase.');return;}
-  if(!comp.hypothesis.trim()){alert('Write a brief hypothesis — it is what makes this a test.');return;}
-  if(comp._edit!==undefined){B.draft.lanes[comp._edit]={...comp}; delete B.draft.lanes[comp._edit]._edit; delete B.draft.lanes[comp._edit].step;}
-  else B.draft.lanes.push({ctp:comp.ctp,segment:comp.segment,angle:comp.angle,funnel:comp.funnel,phase:comp.phase,hypothesis:comp.hypothesis,concepts:+comp.concepts||1,variants:comp.variants?+comp.variants:'',notes:comp.notes,castings:(comp.castings||[]).slice(),formats:(comp.formats||[]).slice()});
-  comp={step:0,ctp:'',segment:'',angle:'',funnel:'',phase:'',hypothesis:'',concepts:1,variants:'',notes:'',castings:[],formats:[]};
-  save(); render();
-}
-function editLane(i){const l=B.draft.lanes[i]; comp={...l,castings:(l.castings||[]).slice(),formats:(l.formats||[]).slice(),step:5,_edit:i}; render();}
+/* line colours (TfL palette) — shared by the lane cards and (step 3) the map */
+const TUBE=['#e32017','#0098d4','#00782a','#b36305','#9b0056','#003688','#00a4a7','#ee7c0e','#84b817','#d31a80','#5a4fcf','#00bd19'];
+const TUBE_C=i=>TUBE[i%TUBE.length];
 function consolidate(){
-  const period=prompt('Which period is this roadmap for? (e.g. "September 2026", "Q4 2026", "Sept W1–W2")','');
-  if(!period||!period.trim())return;
-  B.roadmap={title:`${period.trim()} — ${B.name} Creative Roadmap`,period:period.trim(),lanes:B.draft.lanes,consolidatedAt:new Date().toISOString()};
+  const period=periodLabel();
+  if(!period){alert('Pick the start date of the period this roadmap covers first.');return;}
+  const pl=plannedConcepts(B.draft.lanes), cap=rmCapacity();
+  if(cap!=null&&pl>cap&&!confirm(`This roadmap plans ${pl} concepts and the contract for ${period} covers ${cap}.\n\nConsolidate anyway?`))return;
+  if(cap!=null&&pl<cap&&!confirm(`${period}: ${pl} of ${cap} contracted concepts planned — ${cap-pl} left on the table.\n\nConsolidate anyway?`))return;
+  const r=RM(); r.thesis.period=period;
+  const nums=conceptNumbers(B.draft.lanes);
+  B.roadmap={title:(r.thesis.title?r.thesis.title+' — ':'')+period+' — '+B.name+' Creative Roadmap',period,
+    periodStart:r.period.start,periodWeeks:perWeeks(),periodEnd:ymdOf(perEnd()),
+    schedule:rmPlan(B.draft.lanes).map(x=>({delivery:x.d,due:x.due?ymdOf(x.due):null,
+      businessDays:x.bd,menuCost:x.cost,unroutedConcepts:x.unset})),
+    contract:{conceptsPerMonth:perMonth(),capacity:cap,planned:pl,
+      source:perMonth()==null?'not set (HubSpot wiring pending)':'strategist manual',of:B.name},
+    thesis:{...r.thesis},conceptStart:+r.conceptStart||1,
+    lanes:B.draft.lanes.map((l,i)=>({...l,conceptNums:nums[i]})),consolidatedAt:new Date().toISOString()};
   B.draft=null; save(); go('roadmap');
 }
 function vRoadmapView(){
   const R=B.roadmap;
-  const totC=R.lanes.reduce((a,l)=>a+(+l.concepts||0),0);
+  const totC=plannedConcepts(R.lanes);
   const totA=R.lanes.reduce((a,l)=>a+((+l.concepts||0)*(+l.variants||1)),0);
-  return `<div class="shead"><h2>🗺️ ${esc(R.title)}</h2><span class="badge ok">Complete</span>
+  const cap=(R.contract||{}).capacity;
+  return `<div class="shead"><h2>🗺️ ${esc(R.title)}</h2><span class="consol">Consolidated${R.consolidatedAt?' · '+esc(R.consolidatedAt.slice(0,10)):''}</span>
     <div class="acts">
       <button class="btn" onclick="go('flow')">← Back</button>
       <button class="btn" onclick="go('layer')">🧠 Strategy Layer</button>
       <button class="btn" onclick="changeRoadmap()">✎ Change Roadmap</button>
-      <button class="btn" onclick="openExport()">📊 Export to Strategy Sheet</button>
+      <button class="btn" onclick="openExport()">⬇ Export</button>
       <button class="btn primary" onclick="go('briefs')">📝 Create Brief</button>
       <button class="btn" style="color:var(--bad)" onclick="deleteRoadmap()" title="Delete this roadmap (clears its Strategy Sheet and briefs too)">🗑</button>
     </div></div>
+  ${vThesis({noPlan:true})}
   <div class="tiles">
     <div class="tile"><div class="v">${R.lanes.length}</div><div class="l">Swimlanes</div></div>
     <div class="tile"><div class="v">${totC}</div><div class="l">Concepts</div></div>
     <div class="tile"><div class="v">${totA}</div><div class="l">Total ads</div></div>
-    <div class="tile"><div class="v" style="font-size:15px; padding-top:6px">${esc(B.layer.product.name.slice(0,40))}</div><div class="l">Product</div></div>
+    ${cap!=null?`<div class="tile"><div class="v" style="color:${totC>cap?'var(--bad)':totC===cap?'var(--good)':'inherit'}">${totC}/${cap}</div><div class="l">Contracted concepts${R.periodWeeks?` · ${R.periodWeeks} weeks`:''}</div></div>`:''}
   </div>
-  ${R.lanes.map((l,i)=>`<div class="lane"><div class="lt"><b>Swimlane ${i+1}${l.delivery?` · D${String(l.delivery).padStart(3,'0')}`:''}:</b>
+  ${vTube(R.lanes)}
+  ${R.lanes.map((l,i)=>`<div class="lane" style="border-left-color:${TUBE_C(i)}" onmouseenter="hlLane(${i})" onmouseleave="hlLane(null)"><div class="lt"><b>${l.delivery?'D'+String(l.delivery).padStart(3,'0'):'Swimlane '+(i+1)}:</b>
     Test <b>${esc(l.ctp)}</b> in <b>${esc(l.segment)}</b>, through the <b>${esc(l.angle)}</b> angle, at <b>${esc(l.funnel)}</b> as an <b>${esc(l.phase)}</b> play.</div>
     <div class="lm"><b>Hypothesis:</b> ${esc(l.hypothesis)}</div>
-    <div class="lm">${l.concepts} concept(s)${l.variants?` × ${l.variants} variant(s)`:''}${(l.castings||[]).length?` · <b>🎭 Suggested casting:</b> ${esc(l.castings.join(', '))}`:''}${(l.formats||[]).length?` · <b>🎞 Format:</b> ${esc(l.formats.join('/'))}`:''}${l.notes?` · <b>Notes:</b> ${esc(l.notes)}`:''}</div></div>`).join('')}`;
+    ${(l.conceptSpecs||[]).some(x=>x.casting||x.format)?`<div class="lm">${(l.conceptSpecs||[]).map((x,k)=>`C${String((l.conceptNums||[])[k]||0).padStart(3,'0')}: ${esc(x.format||'—')}${x.casting?' · 🎭 '+esc(x.casting):''}`).join(' &nbsp;|&nbsp; ')}</div>`:''}
+    <div class="lm">${l.concepts} concept(s)${l.variants?` × ${l.variants} variant(s)`:''}${(l.castings||[]).length?` · <b>🎭</b> ${esc(l.castings.join(', '))}`:''}${(l.formats||[]).length?` · <b>🎞</b> ${esc(l.formats.join('/'))}`:''}${l.notes?` · <b>Notes:</b> ${esc(l.notes)}`:''}</div></div>`).join('')}${vRmExport()}`;
 }
-function changeRoadmap(){B.draft={lanes:B.roadmap.lanes.map(l=>({...l}))}; B.roadmap=null; comp={step:0,ctp:'',segment:'',angle:'',funnel:'',phase:'',hypothesis:'',concepts:1,variants:'',notes:'',castings:[],formats:[]}; save(); render();}
+function changeRoadmap(){B.draft={lanes:B.roadmap.lanes.map(l=>({...l}))}; B.roadmap=null; comp=rmBlank(); save(); render();}
 
-/* ══════════ EXPORT → STRATEGY SHEET ══════════ */
+/* ══════════ EXPORT → STRATEGY SHEET (step 4 replaces this modal with the export hub) ══════════ */
 function openExport(){
   const el=document.getElementById('exportLanes');
   el.innerHTML=B.roadmap.lanes.map((l,i)=>`<div class="f" style="display:flex; gap:10px; align-items:center; margin-bottom:6px">
     <span style="flex:1; font-size:12.5px">${i+1}. ${esc(l.ctp)} + ${esc(l.angle)} (${l.concepts}c${l.variants?'×'+l.variants+'v':''})</span>
     <label style="margin:0">D#</label><input type="number" id="expD${i}" min="1" value="${l.delivery||''}" placeholder="e.g. ${7+i}" style="width:90px"></div>`).join('');
+  document.getElementById('expC0').value=+RM().conceptStart||1;
   document.getElementById('m-export').classList.add('open');
 }
 function closeModal(id){document.getElementById('m-'+id).classList.remove('open');}
@@ -1610,15 +1906,16 @@ function doExport(){
     for(let k=0;k<(+l.concepts||1);k++){
       const cNum=c++;
       const nV=+l.variants||1;
+      const sp=(l.conceptSpecs||[])[k]||{};
       for(let v=1;v<=nV;v++){
         rows.push({brand:B.name.toUpperCase(),status:'Not Started',
           d:'D'+String(l.delivery).padStart(3,'0'),c:'C'+String(cNum).padStart(3,'0'),
-          strategist:'Evan',variant:l.variants?('V'+String(v).padStart(2,'0')):'',
-          /* sheet is for machines: CTP column carries the persona TAG (feeds the naming convention); Segment carries the segment name.
-             Talent/Format: pre-filled when the lane suggested exactly one option; otherwise assigned per concept via the sheet dropdowns. */
+          strategist:route.strategist||'Evan',variant:l.variants?('V'+String(v).padStart(2,'0')):'',
+          /* sheet is for machines: CTP column carries the persona TAG; Talent/Format come PER CONCEPT
+             from conceptSpecs when set, falling back to the lane-level single-option rule */
           product:B.layer.product.name,hypothesis:l.hypothesis,ctp:(personaOf(l.ctp)||{}).tag||l.ctp,segment:l.segment,
           angle:l.angle,funnel:l.funnel,phase:l.phase,
-          talent:(l.castings||[]).length===1?l.castings[0]:'',format:(l.formats||[]).length===1?l.formats[0]:''});
+          talent:sp.casting||((l.castings||[]).length===1?l.castings[0]:''),format:sp.format||((l.formats||[]).length===1?l.formats[0]:'')});
       }
     }
   });
@@ -1626,6 +1923,7 @@ function doExport(){
   B.sheet={rows,exportedAt:new Date().toISOString().slice(0,10),from:B.roadmap.title};
   save(); closeModal('export'); go('sheet');
 }
+
 function vSheet(){
   if(!sheetComplete())return `<div class="shead"><h2>📊 Strategy Sheet</h2><span class="badge no">Incomplete</span>
     <div class="acts"><button class="btn" onclick="go('flow')">← Back</button></div></div>
