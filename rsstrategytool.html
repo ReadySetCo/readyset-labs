@@ -802,6 +802,18 @@ function loadBrand(code){
     if(def.seed&&def.seed.segments[0]&&def.seed.segments[0].casting&&B.layer.segments.length&&!B.layer.segments[0].casting){
       B.layer.ctps=JSON.parse(JSON.stringify(def.seed.ctps));
       B.layer.segments=JSON.parse(JSON.stringify(def.seed.segments)); save();}
+    /* seed-heal: a saved layer shadows the seed, so persona insights added to the seed later
+       (e.g. the Creative Library PDF descriptions, Sep 6) never reach it. Fill ONLY empty
+       fields from the matching seed persona — anything the strategist typed is never touched. */
+    if(def.seed&&(def.seed.ctps||[]).length){
+      let healed=false;
+      B.layer.ctps.forEach(c=>{
+        const sp=def.seed.ctps.find(x=>(c.tag&&x.tag===c.tag)||x.name===c.name); if(!sp)return;
+        if(!c.insight&&sp.insight){c.insight=sp.insight; healed=true;}
+        if((!c.clothingPersona||!c.clothingPersona.length)&&(sp.clothingPersona||[]).length){c.clothingPersona=sp.clothingPersona.slice(); healed=true;}
+      });
+      if(healed)save();
+    }
     return;}}catch(e){}
   B=blankBrand(def);
 }
