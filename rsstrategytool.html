@@ -1294,6 +1294,7 @@ function perfBody(scope){
   ${backfillCard(sc)}
   ${castingRadar(sc)}
   ${legacyCard}
+  ${tagPackCard()}
   <div class="grid2">
     <div class="card"><div class="card-h"><h3>🏆 Winners</h3><span class="hint" id="winHint">CPA better than benchmark, meaningful spend · ${esc(sc.label)}</span></div><div class="card-b" id="winners"></div></div>
     <div class="card"><div class="card-h"><h3>💡 Opportunities</h3><span class="hint">validated dimensions never tested together</span></div><div class="card-b" id="opps"></div></div>
@@ -1390,6 +1391,47 @@ function exportTags(){
   navigator.clipboard.writeText(tsv).then(
     ()=>alert(ks.length+' tagged row(s) copied as TSV.\n\nPaste straight into the Strategy Sheet — a tag that only lives in this browser is not a tag.'),
     ()=>{const w=window.open('','_blank'); w.document.write('<pre>'+esc(tsv)+'</pre>');});
+}
+/* ── TAG PACK — the PoC's human tagging is a deliverable in itself.
+   Everything a strategist confirms here (backfill tags + legacy re-tags) downloads as one
+   JSON pack, so it can seed the production version of the product — and can be imported
+   into another browser/strategist meanwhile. Local tags win on conflict. */
+function downloadTagPack(){
+  const nT=Object.keys(B.perfTags||{}).length, nR=Object.keys(B.perfRetag||{}).length;
+  if(!nT&&!nR){alert('No human tags yet — confirm a backfill row or a legacy re-tag first.');return;}
+  const pack={product:'RS Strategy OS (PoC)',schema:'tag-pack-v1',brand:B.code,brandName:B.name,
+    exportedAt:new Date().toISOString(),by:route.strategist||'—',
+    counts:{backfillTags:nT,legacyRetags:nR},
+    perfTags:B.perfTags||{},perfRetag:B.perfRetag||{}};
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([JSON.stringify(pack,null,1)],{type:'application/json'}));
+  a.download=`tagpack-${B.code}-${new Date().toISOString().slice(0,10)}.json`;
+  document.body.appendChild(a); a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
+}
+async function importTagPack(inp){
+  const f=inp.files[0]; if(!f)return; const txt=await f.text(); inp.value='';
+  try{
+    const p=JSON.parse(txt);
+    if(p.schema!=='tag-pack-v1')throw new Error('not a tag pack (schema mismatch)');
+    if(p.brand!==B.code&&!confirm(`This pack was exported for ${p.brandName||p.brand} and you are on ${B.name}.\n\nImport anyway?`))return;
+    B.perfTags=B.perfTags||{}; B.perfRetag=B.perfRetag||{};
+    let add=0,skip=0;
+    Object.entries(p.perfTags||{}).forEach(([k,v])=>{if(B.perfTags[k])skip++;else{B.perfTags[k]=v;add++;}});
+    Object.entries(p.perfRetag||{}).forEach(([k,v])=>{if(B.perfRetag[k])skip++;else{B.perfRetag[k]=v;add++;}});
+    save(); render();
+    alert(`Imported ${add} tag(s)${skip?` · kept ${skip} existing (local tags win on conflict)`:''}.`);
+  }catch(e){alert('Could not import: '+e.message);}
+}
+function tagPackCard(){
+  const nT=Object.keys(B.perfTags||{}).length, nR=Object.keys(B.perfRetag||{}).length;
+  return `<div class="card"><div class="card-h"><h3>🏷 Tag pack — PoC → final product</h3>
+    <span class="hint">every tag confirmed here (backfill + legacy re-tags) is a deliverable: download the pack to seed the production version, or import a pack made by another strategist. Local tags win on conflict.</span>
+    <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
+      <button class="btn tiny ${nT+nR?'primary':''}" onclick="downloadTagPack()">⬇ Download tag pack${nT+nR?` (${nT+nR})`:''}</button>
+      <button class="btn tiny" onclick="document.getElementById('tagPackFile').click()">📥 Import</button>
+      <input type="file" id="tagPackFile" accept=".json" style="display:none" onchange="importTagPack(this)">
+    </div></div></div>`;
 }
 function backfillCard(sc){
   const rows=backfillRows(sc);
