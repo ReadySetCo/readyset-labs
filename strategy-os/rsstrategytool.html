@@ -794,12 +794,14 @@ function blankBrand(def){
   return {code:def.code,name:def.name,
     layer:def.seed?JSON.parse(JSON.stringify(def.seed)):{product:{name:'',brand:def.name,description:'',category:''},valueProps:[],diffs:[],ctps:[],segments:[],angles:[],cds:{feel:['','',''],never:['','',''],custom:''}},
     roadmap:null, draft:null, sheet:null, briefsMade:false,
+    pls:null, /* corrida del motor PLS (segundo camino de ingesta — ver ══ PLS engine runs ══) */
     perf:{reports:def.perf?[JSON.parse(JSON.stringify(PERF_SEED.report))]:[], rows:def.perf?PERF_SEED.rows.slice():[], unparsed:def.perf?PERF_SEED.unparsed.slice():[]}};
 }
 function loadBrand(code){
   const def=BRAND_DEFS.find(b=>b.code===code);
   try{const s=JSON.parse(lsGet('sos-v1-'+code)||'null'); if(s){B=s;
     if(!B.layer.cds)B.layer.cds={feel:['','',''],never:['','',''],custom:''};
+    if(B.pls===undefined)B.pls=null; /* estado guardado antes del merge PLS */
     /* a previously-saved EMPTY layer must not shadow a newly ingested seed */
     const L=B.layer, empty=!L.product.name&&!L.ctps.length&&!L.segments.length&&!L.angles.length;
     if(empty&&def.seed){B.layer=JSON.parse(JSON.stringify(def.seed)); save();}
@@ -1084,6 +1086,7 @@ function vLayer(){
       <button class="btn primary" onclick="startRoadmap()">🗺️ Generate a Creative Roadmap</button>
     </div></div>
   ${layerComplete()?'':`<div class="alert warn">🟡 <span><b>Incomplete.</b> To be complete it needs: the Product info (with value props & differentiators) and at least 1 CTP, 1 Segment and 1 Angle. Add as many as you need — you can keep completing later.</span></div>`}
+  ${plsRun()&&plsRun().run_type!=='execution_analysis'?`<div class="alert" style="background:var(--card2)">⟐ <span>Al lado de cada <b>Validation</b> está lo que el motor PLS ya sabe de esa dimensión: <b>efecto</b> (cómo rinde contra el promedio de la cuenta — 0 = igual al promedio) y <b>soporte</b> (cuánta prueba real hay detrás, solo de evidencia). Sin píldora = el motor todavía no vio esa dimensión corriendo. <b>El selector sigue siendo tuyo: el motor sugiere, no decide.</b></span></div>`:''}
   <div class="card"><div class="card-h"><h3>Product</h3></div><div class="card-b">
     <div class="grid2">
       <div class="f"><label>Product / Service Name</label><input data-path="layer.product.name" data-dirty="1" value="${esc(L.product.name)}"></div>
@@ -1102,7 +1105,7 @@ function vLayer(){
       ${hasTag?`<td><input data-path="layer.ctps.${i}.tag" data-dirty="1" value="${esc(c.tag||'')}" style="font-family:ui-monospace,monospace; font-size:12px" placeholder="p-…"></td>`:''}
       <td><textarea data-path="layer.ctps.${i}.insight" data-dirty="1" rows="2">${esc(c.insight)}</textarea></td>
       ${hasTag?`<td><input value="${esc((c.clothingPersona||[]).join(' · '))}" placeholder="e.g. Refined · Coastal" oninput="B.layer.ctps[${i}].clothingPersona=this.value.split('·').map(s=>s.trim()).filter(Boolean);save();markDirty()"></td>`:''}
-      <td>${valSel(`layer.ctps.${i}.val`,c.val)}</td>
+      <td>${valSel(`layer.ctps.${i}.val`,c.val)}${plsEvBadge('ctp',c.name)}</td>
       <td><input data-path="layer.ctps.${i}.src" data-dirty="1" value="${esc(c.src)}"></td>
       <td style="width:26px"><button class="rowdel" onclick="delRowL('ctp',${i})">✕</button></td></tr>`).join('')}</tbody></table>
     <button class="btn tiny" style="margin-top:8px" onclick="addRowL('ctp')">＋ Add ${hasTag?'persona':'CTP'}</button></div></div>`;})()}
@@ -1118,7 +1121,7 @@ function vLayer(){
           <a href="#" title="Promote to segment (needs a hypothesis + a control)" style="text-decoration:none; margin-left:4px" onclick="promoteCast(${i},${j});return false">↑</a>
           <a href="#" title="Remove" style="text-decoration:none; color:var(--bad)" onclick="delCast(${i},${j});return false">✕</a></span>`).join('')}
         <a href="#" class="hint" style="align-self:center" onclick="addCast(${i});return false">＋</a></div></td>
-      <td>${valSel(`layer.segments.${i}.val`,s.val)}</td>
+      <td>${valSel(`layer.segments.${i}.val`,s.val)}${plsEvBadge('segment',s.name)}</td>
       <td><input data-path="layer.segments.${i}.src" data-dirty="1" value="${esc(s.src)}"></td>
       <td><input data-path="layer.segments.${i}.beh" data-dirty="1" value="${esc(s.beh)}" placeholder="notes"></td>
       <td style="width:44px; white-space:nowrap"><button class="rowdel" title="Demote into another segment's casting" onclick="demoteSeg(${i})">⤵</button><button class="rowdel" onclick="delRowL('seg',${i})">✕</button></td></tr>`).join('')}</tbody></table>
@@ -1127,7 +1130,7 @@ function vLayer(){
     <div class="card-b"><table class="et"><thead><tr><th style="width:34%">Angle</th><th style="width:110px">Validation</th><th>Source</th><th></th></tr></thead><tbody>
     ${L.angles.map((a,i)=>`<tr>
       <td><input data-path="layer.angles.${i}.name" data-dirty="1" value="${esc(a.name)}"></td>
-      <td>${valSel(`layer.angles.${i}.val`,a.val)}</td>
+      <td>${valSel(`layer.angles.${i}.val`,a.val)}${plsEvBadge('angle',a.name)}</td>
       <td><input data-path="layer.angles.${i}.src" data-dirty="1" value="${esc(a.src)}"></td>
       <td style="width:26px"><button class="rowdel" onclick="delRowL('ang',${i})">✕</button></td></tr>`).join('')}</tbody></table>
     <button class="btn tiny" style="margin-top:8px" onclick="addRowL('ang')">＋ Add angle</button></div></div>
@@ -1196,6 +1199,155 @@ function benchCPA(scope){
   const sc=scope||perfScope();
   return sc.acctPu?sc.acctSp/sc.acctPu:0;
 }
+
+function plsNorm(s){return String(s||'').toLowerCase().replace(/\s+/g,' ').replace(/\s*\/\s*/g,'/').trim()}
+
+/* ══════════ PLS engine runs — segundo camino de ingesta ══════════
+   El modelo de arriba (D+C) asume el export de Looker y la Strategy Sheet como tabla de join.
+   Una corrida de Motion no tiene D+C: llega ya taggeada por ad y agregada en combos, con
+   effect y confianza calculados por el bridge (bridge/motion_to_tagged.py →
+   audience_splitter.py). Por eso aterriza en B.pls y acá SOLO SE LEE: la shell muestra
+   evidencia que no calculó. El motor vive en el bridge hasta el paso 2 del merge.
+
+   Diferencia que importa contra el heat map de CPA de arriba: el CPA promedio de un combo
+   se lo lleva el creativo donde Meta puso la plata. El `effect` trata a cada creativo como
+   evidencia y NO pondera por spend — por eso los dos mapas pueden contradecirse, y ahí
+   está el valor. */
+const plsRun=()=>(B&&B.pls&&B.pls.tested&&B.pls.tested.length)?B.pls:null;
+const plsFmt$=n=>'$'+Math.round(n||0).toLocaleString();
+function plsEvidence(kind,name){
+  /* toda la evidencia que el motor tiene sobre UNA dimensión del Layer (un CTP o un angle) */
+  const R=plsRun(); if(!R||!name)return null;
+  if(R.run_type==='execution_analysis')return null; /* M6 describe ejecuciones, no valida CTPs ni ángulos */
+  const key=plsNorm(name);
+  /* segment es multivaluado en una corrida ("Amazon Prime members / Families"): un combo
+     cuenta como evidencia del segmento si lo contiene, no solo si es idéntico */
+  const hits=kind==='segment'
+    ? R.tested.filter(t=>plsNorm(t.segment).split('/').map(s=>s.trim()).includes(key))
+    : R.tested.filter(t=>plsNorm(t[kind])===key);
+  if(!hits.length)return null;
+  const spend=hits.reduce((a,t)=>a+(t.spend||0),0);
+  const conv=hits.reduce((a,t)=>a+(t.conv||0),0);
+  /* effect y conf son por combo: se promedian ponderando por la confianza de cada uno,
+     que es exactamente "cuánta prueba real hay detrás". Un combo con conf 0 no vota. */
+  const w=hits.reduce((a,t)=>a+(t.conf||0),0);
+  return {n:hits.length, spend, conv, cpa:conv?spend/conv:null,
+    effect:w?hits.reduce((a,t)=>a+(t.effect||0)*(t.conf||0),0)/w:null,
+    /* la confianza NO se suma entre combos: dos combos flojos no hacen uno fuerte.
+       Se toma la del combo mejor probado — es "cuánta prueba hay en el mejor caso". */
+    conf:Math.max(...hits.map(t=>t.conf||0)),
+    combos:hits};
+}
+function plsEvBadge(kind,name){
+  /* la píldora que se muestra al lado del selector de Validation en el Strategy Layer */
+  const e=plsEvidence(kind,name); if(!e)return '';
+  const col=e.effect==null?'var(--ink3)':e.effect>=6?'var(--good)':e.effect<=-6?'var(--bad)':'var(--ink2)';
+  const sign=e.effect==null?'sin señal':(e.effect>0?'+':'')+e.effect.toFixed(0);
+  return `<span title="El motor PLS vio ${e.n} combinación(es) con esta dimensión · ${plsFmt$(e.spend)} de spend · CPA ${e.cpa?plsFmt$(e.cpa):'—'} · efecto ${sign} · soporte ${e.conf}%&#10;&#10;Efecto = qué tan bien rinde contra el promedio de la cuenta (0 = igual). Confianza = cuánta prueba real hay detrás; sale solo de evidencia, nunca del prior."
+    style="display:inline-block; margin-left:6px; font-size:10.5px; font-weight:700; color:${col}; white-space:nowrap">
+    ⟐ ${sign} · ${e.conf}%</span>`;
+}
+function plsStatusColor(s){
+  return {'Winner':'var(--good)','Promising':'var(--good)','Weak':'var(--bad)',
+          'Contradictory':'var(--warn)','Insufficient evidence':'var(--ink3)'}[s]||'var(--ink2)';
+}
+function plsBodyDims(R){
+  /* M6 · Ad Dimension Extractor. Los grupos de tested[] se SUPERPONEN (cada asset entra en un grupo por
+     dimensión): el spend no se suma entre filas; el total único viene declarado en _source.spend_unico. */
+  const b=R.benchmarks||{}, S=R.source_full||{}, src=R.source||{};
+  const T=R.tested||[], P=R.pares||[];
+  const byDim={}; T.forEach(t=>{(byDim[t.dim||t.ctp]=byDim[t.dim||t.ctp]||[]).push(t);});
+  const dims=Object.keys(byDim).sort((a,b)=>{const ra=Math.max(...byDim[a].map(t=>t.effect||0))-Math.min(...byDim[a].map(t=>t.effect||0));
+    const rb=Math.max(...byDim[b].map(t=>t.effect||0))-Math.min(...byDim[b].map(t=>t.effect||0)); return rb-ra;});
+  const effCol=t=>t.conf?(t.effect>=6?'var(--good)':t.effect<=-6?'var(--bad)':'var(--ink)'):'var(--ink3)';
+  const row=t=>{const vs=(t.cpa&&b.cpa)?Math.round(100*(t.cpa/b.cpa-1)):null;
+    return `<tr><td>${esc(t.label||t.angle||t.valor)}</td>
+      <td style="text-align:right">${t.creatives||t.creativesWithEvidence||0}</td>
+      <td style="text-align:right">${plsFmt$(t.spend)}</td>
+      <td style="text-align:right">${t.cpa?plsFmt$(t.cpa):'—'}${vs!==null?` <span style="font-size:10.5px; color:${vs>0?'var(--bad)':'var(--good)'}">${vs>0?'+':''}${vs}%</span>`:''}</td>
+      <td style="text-align:right; font-weight:800; color:${effCol(t)}">${t.conf?((t.effect>0?'+':'')+t.effect.toFixed(1)):'—'}</td>
+      <td style="text-align:right">${t.conf}%</td>
+      <td style="font-weight:700; color:${plsStatusColor(t.status)}">${esc(t.status)}</td></tr>`;};
+  const dimTable=d=>{const rows=byDim[d].filter(t=>(t.creatives||0)>=2).sort((x,y)=>(y.effect||0)-(x.effect||0)); if(!rows.length)return '';
+    return `<details style="margin:6px 0"><summary style="cursor:pointer; font-weight:700">${esc(byDim[d][0].ctp||d)} <span class="hint">· ${rows.length} valores con ≥2 creativos · rango ${(Math.max(...rows.map(t=>t.effect))-Math.min(...rows.map(t=>t.effect))).toFixed(0)} puntos</span></summary>
+      <div style="overflow-x:auto"><table class="et"><thead><tr><th>Valor</th><th style="text-align:right">Creativos</th><th style="text-align:right">Spend</th><th style="text-align:right">CPA</th><th style="text-align:right">Efecto</th><th style="text-align:right">Soporte</th><th>Estado</th></tr></thead>
+      <tbody>${rows.map(row).join('')}</tbody></table></div></details>`;};
+  const pares={}; P.forEach(x=>{(pares[x.par]=pares[x.par]||[]).push(x);});
+  const parTable=k=>{const rows=pares[k].filter(x=>(x.creatives||0)>=3).sort((a,c)=>(c.spend||0)-(a.spend||0)).slice(0,14); if(!rows.length)return '';
+    return `<details style="margin:6px 0"><summary style="cursor:pointer; font-weight:700">${esc(k.replace(':',' × '))} <span class="hint">· pares con ≥3 creativos</span></summary>
+      <div style="overflow-x:auto"><table class="et"><thead><tr><th>Par</th><th style="text-align:right">Creativos</th><th style="text-align:right">Spend</th><th style="text-align:right">CPA</th><th style="text-align:right">Efecto</th><th style="text-align:right">Soporte</th><th>Estado</th></tr></thead>
+      <tbody>${rows.map(x=>row({...x,label:`${x.label1} × ${x.label2}`})).join('')}</tbody></table></div></details>`;};
+  return `
+  <div class="card"><div class="card-h"><h3>⟐ Dimensiones formales × performance (M6)</h3>
+    <span class="hint">qué se ve en el ad, cruzado con la performance por el motor · describe ejecuciones, no valida CTPs</span></div>
+    <div class="card-b">
+    <div class="fbrow">📊 <b>${esc(src.name||'M6 run')}</b> · datos: ${esc(src.dates||'—')} · cargado ${esc(src.loadedAt||'—')} por ${esc(src.loadedBy||'—')}
+      <br><span style="color:var(--ink3); font-size:11.5px">${esc(S.origen||'')} · taxonomía ${esc(S.taxonomia||'—')} · percepción ${esc(S.gemini||'—')} · juez ${esc(S.juez||'—')} en ${S.fuentes&&S.fuentes['juez:'+S.juez]||0} assets</span></div>
+    <div class="tiles" style="margin-top:12px">
+      <div class="tile"><div class="v">${plsFmt$(S.spend_unico||S.spend_cubierto||0)}</div><div class="l">Spend único cubierto${S.pct_spend_cubierto?` · ${S.pct_spend_cubierto}% de la cuenta`:''}</div></div>
+      <div class="tile"><div class="v">${S.assets_con_dimensiones||'—'}</div><div class="l">Assets con dimensiones${S.assets_total?` de ${S.assets_total}`:''}</div></div>
+      <div class="tile"><div class="v">${T.length}</div><div class="l">Grupos dimensión × valor (superpuestos)</div></div>
+      <div class="tile"><div class="v">${b.cpa?plsFmt$(b.cpa):'—'}</div><div class="l">CPA benchmark de referencia (${esc(b.convEvent||'conv')}); cada obs usa el de su mes</div></div>
+    </div>
+    <div class="alert warn" style="margin-top:12px">🟡 <span><b>Cómo leer esta tabla.</b> Cada asset aparece en un grupo por dimensión: los spends de las filas <b>no se suman</b>. Los contrastes son <b>asociaciones</b> dentro de una cuenta, no causas: skit, actor, tono humorístico y producción elevada pueden ser una misma campaña. Los estáticos rinden distinto que el video en esta cuenta: comparar dimensiones de video dentro del estrato video. Las etiquetas son de un modelo; la calibración humana está pendiente.</span></div>
+    <h4 style="margin:14px 0 4px">Una dimensión a la vez <span class="hint">ordenadas por contraste interno; abrir para ver los valores</span></h4>
+    ${dims.map(dimTable).join('')}
+    ${Object.keys(pares).length?`<h4 style="margin:14px 0 4px">Pares <span class="hint">la matriz que pidió estrategia</span></h4>${Object.keys(pares).map(parTable).join('')}`:''}
+    </div></div>`;
+}
+function plsBody(){
+  const R=plsRun(); if(!R)return '';
+  if(R.run_type==='execution_analysis')return plsBodyDims(R);
+  const b=R.benchmarks||{}, T=R.tested.slice().sort((x,y)=>(y.spend||0)-(x.spend||0));
+  const spend=T.reduce((a,t)=>a+(t.spend||0),0);
+  const noAud=T.filter(t=>!t.ctp).reduce((a,t)=>a+(t.spend||0),0);
+  const withCtp=T.filter(t=>t.ctp).reduce((a,t)=>a+(t.spend||0),0);
+  const wide=T.filter(t=>t.cpaSpread&&t.cpaSpread.ratio>=2).sort((x,y)=>y.cpaSpread.ratio-x.cpaSpread.ratio);
+  const src=R.source||{};
+  const row=t=>{
+    const vs=(t.cpa&&b.cpa)?Math.round(100*(t.cpa/b.cpa-1)):null;
+    const sp=t.cpaSpread;
+    return `<tr>
+      <td><b>${esc(t.ctp||'—')}</b> × ${esc(t.angle)}${t.funnel?` <span style="color:var(--ink3)">(${esc(t.funnel)})</span>`:''}</td>
+      <td style="font-size:11.5px; color:var(--ink2)">${esc(t.segment||'—')}</td>
+      <td style="text-align:right">${plsFmt$(t.spend)}</td>
+      <td style="text-align:right">${(t.conv||0).toLocaleString()}</td>
+      <td style="text-align:right">${t.cpa?plsFmt$(t.cpa):'—'}${vs!==null?`<br><span style="font-size:10.5px; color:${vs>0?'var(--bad)':'var(--good)'}">${vs>0?'+':''}${vs}%</span>`:''}</td>
+      <td style="text-align:right; font-size:11.5px">${sp?`${plsFmt$(sp.min)}–${plsFmt$(sp.max)}<br><span style="color:${sp.ratio>=2?'var(--warn)':'var(--ink3)'}; font-weight:700">${sp.ratio}x</span>`:'—'}</td>
+      <td style="text-align:right; font-weight:800; color:${t.conf?(t.effect>=6?'var(--good)':t.effect<=-6?'var(--bad)':'var(--ink)'):'var(--ink3)'}">${t.conf?((t.effect>0?'+':'')+t.effect.toFixed(1)):'—'}</td>
+      <td style="text-align:right">${t.conf}%</td>
+      <td style="text-align:right">${t.creativesWithEvidence||0}</td>
+      <td style="font-weight:700; color:${plsStatusColor(t.status)}">${esc(t.status)}</td></tr>`;};
+  return `
+  <div class="card"><div class="card-h"><h3>⟐ PLS engine — evidencia por combinación</h3>
+    <span class="hint">corrida del motor sobre data taggeada · la shell muestra, no recalcula</span></div>
+    <div class="card-b">
+    <div class="fbrow">📊 <b>${esc(src.name||'PLS run')}</b> · datos: ${esc(src.dates||'—')} · cargado ${esc(src.loadedAt||'—')} por ${esc(src.loadedBy||'—')}
+      ${src.origin?`<br><span style="color:var(--ink3); font-size:11.5px">${esc(src.origin)}</span>`:''}</div>
+    <div class="tiles" style="margin-top:12px">
+      <div class="tile"><div class="v">${plsFmt$(spend)}</div><div class="l">Spend analizado</div></div>
+      <div class="tile"><div class="v">${T.length}</div><div class="l">Combinaciones con evidencia</div></div>
+      <div class="tile"><div class="v">${b.cpa?plsFmt$(b.cpa):'—'}</div><div class="l">CPA benchmark (${esc(b.convEvent||'conv')})</div></div>
+      <div class="tile" style="border-color:var(--warn)"><div class="v" style="color:var(--warn)">${plsFmt$(noAud)}</div>
+        <div class="l">⚠ Spend SIN audiencia${spend?` · ${Math.round(100*noAud/spend)}%`:''}</div></div>
+    </div>
+    ${withCtp<spend*0.15?`<div class="alert warn">🟡 <span><b>El mapa CTP × Angle está casi virgen.</b> Solo ${plsFmt$(withCtp)} de ${plsFmt$(spend)} corren contra un CTP —
+      el resto va a audiencias que describen QUIÉN es la persona (membresías, ciclos de vida) o directamente a Broad.
+      Es lo que los tags dejan ver: no hay registro de hipótesis contra mindsets en esta data, lo que no prueba que no existieran.</span></div>`:''}
+    <div style="overflow-x:auto"><table class="et"><thead><tr>
+      <th>CTP × Angle</th><th>Segmento</th><th style="text-align:right">Spend</th><th style="text-align:right">Conv</th>
+      <th style="text-align:right">CPA</th><th style="text-align:right">Rango entre creativos</th>
+      <th style="text-align:right">Efecto</th><th style="text-align:right">Conf</th><th style="text-align:right">Creativos</th><th>Estado</th>
+    </tr></thead><tbody>${T.map(row).join('')}</tbody></table></div>
+    </div></div>
+  ${wide.length?`<div class="card"><div class="card-h"><h3>🔧 Donde los creativos del mismo combo se separan</h3>
+    <span class="hint">combinaciones cuyos creativos difieren 2x o más en CPA</span></div>
+    <div class="card-b">
+    <div class="hint" style="margin-bottom:10px">El promedio del combo esconde la dispersión entre creativos. Puede ser ejecución, contexto de entrega o campaña: la dispersión sola no dice cuál. Esto es accionable para un creativo — el brief tiene que copiar la ejecución que funcionó, no el concepto entero.</div>
+    ${wide.map(t=>`<div class="fbrow"><b>${esc(t.ctp||'(sin audiencia)')} × ${esc(t.angle)}</b> — ${t.creativesWithEvidence} creativos entre ${plsFmt$(t.cpaSpread.min)} y ${plsFmt$(t.cpaSpread.max)} de CPA (<b style="color:var(--warn)">${t.cpaSpread.ratio}x</b>). CPA promedio del combo: ${plsFmt$(t.cpa)}.</div>`).join('')}
+    </div></div>`:''}`;
+}
+
 function vPerf(){
   const reports=B.perf.reports, opts=periodOpts(), sc=perfScope();
   return `<div class="shead"><h2>📈 Performance — tested combinations</h2>
@@ -1206,12 +1358,13 @@ function vPerf(){
       ${opts.map(o=>`<option value="${esc(o.id)}" ${PER.sel===o.id?'selected':''}>${esc(o.lbl)}</option>`).join('')}</select></div>
     <div class="card-b" style="padding-top:10px">${monthTrend(sc)}</div></div>`:''}
   <div class="card"><div class="card-h"><h3>Loaded reports</h3>
-    <button class="btn tiny" style="margin-left:auto" onclick="document.getElementById('perfFile').click()">📁 Upload performance report (.csv / .json)</button>
+    <button class="btn tiny" style="margin-left:auto" onclick="document.getElementById('perfFile').click()">📁 Upload performance report or PLS run (.csv / .json)</button>
     <input type="file" id="perfFile" accept=".csv,.json" style="display:none" onchange="loadPerf(this)"></div>
     <div class="card-b">
     ${(()=>{const ds=perfDS(); return ds&&ds.months.length?`<div class="fbrow">📊 <b>${esc(ds.src)}</b> · monthly account totals + top-25 ads · ${esc(ds.months[0].lbl.replace(/ \(.*\)/,''))} – ${esc(ds.months[ds.months.length-1].lbl)} · pulled ${esc(ds.pulled)}</div>`:'';})()}
     ${reports.length?reports.map(r=>`<div class="fbrow">📄 <b>${esc(r.name)}</b> · data: ${esc(r.dates)} · loaded ${esc(r.loadedAt)} by ${esc(r.loadedBy||'—')}</div>`).join(''):'<div class="hint">No performance reports loaded for this brand yet. Upload the Looker Studio CSV export (per Delivery + Concept) or a converted JSON.</div>'}
     </div></div>
+  ${plsBody()}
   ${sc.rows.length?perfBody(sc):''}`;
 }
 /* ══ monthly trend — the shape of the account over time; click a month to scope everything to it ══ */
@@ -1594,6 +1747,25 @@ function unRetag(key){delete (B.perfRetag||{})[key]; save(); render();}
 async function loadPerf(inp){
   const f=inp.files[0]; if(!f)return; const txt=await f.text(); inp.value='';
   const name=f.name; const today=new Date().toISOString().slice(0,10);
+  /* ¿es una corrida del motor PLS? Se reconoce por su forma, no por el nombre del archivo */
+  if(name.endsWith('.json')){
+    let d=null; try{d=JSON.parse(txt);}catch(e){}
+    if(d&&Array.isArray(d.tested)&&d.benchmarks){
+      const s=d._source||{};
+      if(d.brand&&d.brand.code&&d.brand.code!==B.code&&
+         !confirm(`Esta corrida es de ${d.brand.name||d.brand.code}, y estás parado en ${B.name}. ¿Cargarla igual?`))return;
+      const who2=prompt('¿Quién carga esta corrida? (nombre)','')||'—';
+      const dates2=prompt('Ventana de datos de la corrida (ej. "Aug 1 – Aug 31, 2026")',s.window||'')||'unspecified';
+      B.pls={benchmarks:d.benchmarks, tested:d.tested, audit:d._audit||null,
+        /* tipo de corrida: 'strategic_learning' (CTP × Angle, la del retroactivo) o 'execution_analysis' (M6: dimensión × valor).
+           Se guardan también los pares y la procedencia completa: antes se descartaban al importar. */
+        run_type:d.run_type||s.run_type||'strategic_learning', pares:Array.isArray(d.pares)?d.pares:[], source_full:s,
+        source:{name, dates:dates2, loadedAt:today, loadedBy:who2, origin:s.origen||s.origin||''}};
+      save(); render();
+      alert(`✓ Corrida PLS cargada: ${d.tested.length} combinaciones.`);
+      return;
+    }
+  }
   const who=prompt('Who is loading this report? (name)','')||'—';
   const dates=prompt('Date range of the data in this report (e.g. "Aug 1 – Aug 31, 2026")','')||'unspecified';
   let rows=[],unparsed=[];
