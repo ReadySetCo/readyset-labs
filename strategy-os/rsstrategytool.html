@@ -1756,10 +1756,14 @@ async function loadPerf(inp){
          !confirm(`Esta corrida es de ${d.brand.name||d.brand.code}, y estás parado en ${B.name}. ¿Cargarla igual?`))return;
       const who2=prompt('¿Quién carga esta corrida? (nombre)','')||'—';
       const dates2=prompt('Ventana de datos de la corrida (ej. "Aug 1 – Aug 31, 2026")',s.window||'')||'unspecified';
-      B.pls={benchmarks:d.benchmarks, tested:d.tested, audit:d._audit||null,
+      /* obs[] (una fila por ad × mes) pesa 14 MB en la corrida M6 y la shell no lo lee. Si entra en B, save() excede la
+         cuota de localStorage y falla en silencio (lsSet traga el error): la corrida y TODO lo que se guarde después para
+         esa marca se pierden al recargar. Se descarta al importar (smoke test: tests/shell_smoke.py). */
+      const sinObs=a=>a.map(t=>{const {obs,...r}=t; return r;});
+      B.pls={benchmarks:d.benchmarks, tested:sinObs(d.tested), audit:d._audit||null,
         /* tipo de corrida: 'strategic_learning' (CTP × Angle, la del retroactivo) o 'execution_analysis' (M6: dimensión × valor).
            Se guardan también los pares y la procedencia completa: antes se descartaban al importar. */
-        run_type:d.run_type||s.run_type||'strategic_learning', pares:Array.isArray(d.pares)?d.pares:[], source_full:s,
+        run_type:d.run_type||s.run_type||'strategic_learning', pares:Array.isArray(d.pares)?sinObs(d.pares):[], source_full:s,
         source:{name, dates:dates2, loadedAt:today, loadedBy:who2, origin:s.origen||s.origin||''}};
       save(); render();
       alert(`✓ Corrida PLS cargada: ${d.tested.length} combinaciones.`);
