@@ -272,6 +272,7 @@ const PHASES=['Explore','Exploit','Amplify'];
 const FUNNELS=['TOFU','MOFU','BOFU'];
 const SHEET_COLS=['BRAND','Status','Delivery Number','Concept Number','Scripts Due Date','Footage Request Due','Brief Due Date','Delivery Due Date','Strategist','Owner','Brief Link or Slide','Footage Request Link','Visual Reference/Slide Link','Concept Name','Variant','New / Iteration','Format','Target Platform','Product','Hypothesis','CTP','Segment','Angle','Funnel Level','Phase','Visual Hook','Talent','Visual Style','Offer Type','Variation Final Name','Sizes'];
 const SHEET_KEYS=['brand','status','d','c','scriptsDue','footageDue','briefDue','deliveryDue','strategist','owner','briefLink','footageLink','visualRef','conceptName','variant','newIter','format','platform','product','hypothesis','ctp','segment','angle','funnel','phase','visualHook','talent','visualStyle','offerType','finalName','sizes'];
+const SHEET_DATES=['scriptsDue','footageDue','briefDue','deliveryDue']; /* shown and exported as MM-DD-YY */
 const AD_FORMATS=['VID','STA','GIF','CAR','THU'];
 /* THE MENU — Ready Set's production routes, lifted from Creative Menu/CreativeMenu.html (SERVICES).
    `bd` = business days read from the PESSIMISTIC end of the quoted range ("1-2 days"→2, "2-4 weeks"→20).
@@ -874,6 +875,10 @@ document.addEventListener('change',e=>{if(!B)return;
       (B.briefWork[bid]=B.briefWork[bid]||{}).dateSub=v;
       if(B.sheet)B.sheet.rows.forEach(r=>{if((r.d+r.c)===bid)r.briefDue=v;});
       save();}}
+  /* sheet date cells normalize to MM-DD-YY on blur too */
+  const pm=(e.target.dataset?.path||'').match(/^sheet\.rows\.(\d+)\.(scriptsDue|footageDue|briefDue|deliveryDue)$/);
+  if(pm){const v=fmtDateMDY(e.target.value);
+    if(v!==e.target.value){e.target.value=v; B.sheet.rows[+pm[1]][pm[2]]=v; save();}}
   const cbid=e.target.dataset?.cbid;
   if(cbid&&e.target.tagName!=='SELECT'){const rec=(B.customBriefs||[]).find(x=>x.id===cbid); if(!rec)return;
     if(/^\d+$/.test(rec.d||''))rec.d='D'+rec.d.padStart(3,'0');
@@ -2066,7 +2071,7 @@ function rmSheetRows(lanes){
     const nV=+c.lane.variants||1;
     for(let v=1;v<=nV;v++)rows.push({brand:B.name.toUpperCase(),status:'Not Started',
       d:'D'+String(c.d).padStart(3,'0'),c:'C'+String(c.cNum).padStart(3,'0'),
-      deliveryDue:c.due?ymdOf(c.due):'',strategist:route.strategist||'Evan',
+      deliveryDue:c.due?fmtDateMDY(ymdOf(c.due)):'',strategist:route.strategist||'Evan',
       variant:c.lane.variants?'V'+String(v).padStart(2,'0'):'',newIter:'NEW',
       format:c.format,talent:c.casting,hypothesis:cleanCell(c.lane.hypothesis),
       product:B.layer.product.name,
@@ -2089,11 +2094,11 @@ const PROD_COLS=['Delivery','Due date','Concept','Route','Route name','Team','Bu
 const PROD_KEYS=['d','due','c','route','routeName','team','bd','cost','start','format','talent','ctp','segment','angle'];
 function prodRows(lanes){
   return rmConcepts(lanes).map(c=>({
-    d:'D'+String(c.d).padStart(3,'0'),due:c.due?ymdOf(c.due):'',
+    d:'D'+String(c.d).padStart(3,'0'),due:c.due?fmtDateMDY(ymdOf(c.due)):'',
     c:'C'+String(c.cNum).padStart(3,'0'),
     route:c.route||'',routeName:c.menu?c.menu.name:'',team:c.menu?c.menu.team:'',
     bd:c.menu&&c.menu.bd?c.menu.bd:'',cost:c.menu&&c.menu.cost?c.menu.cost:'',
-    start:c.start?ymdOf(c.start):'',format:c.format,talent:c.casting,
+    start:c.start?fmtDateMDY(ymdOf(c.start)):'',format:c.format,talent:c.casting,
     ctp:c.lane.ctp,segment:c.lane.segment,angle:c.lane.angle}));
 }
 /* 3. Brief payload — one object per concept with the strategy resolved */
@@ -2520,12 +2525,12 @@ function vSheet(){
         if(opts.length){const cur=r[k]||''; const all=[...new Set(['',...opts,...(cur?[cur]:[])])];
           return `<td><select data-path="sheet.rows.${i}.${k}" style="width:100%; border:none; background:transparent; color:var(--ink); font:inherit; font-size:12px">${all.map(o=>`<option value="${esc(o)}" ${o===cur?'selected':''}>${o?esc(o):'—'}</option>`).join('')}</select></td>`;}
       }
-      return `<td class="${WIDE.includes(k)?'wide':''}"><input data-path="sheet.rows.${i}.${k}" value="${esc(r[k]||'')}"></td>`;}).join('')}
+      return `<td class="${WIDE.includes(k)?'wide':''}"><input data-path="sheet.rows.${i}.${k}" value="${esc(SHEET_DATES.includes(k)?fmtDateMDY(r[k]||''):(r[k]||''))}"${SHEET_DATES.includes(k)?' placeholder="MM-DD-YY"':''}></td>`;}).join('')}
       <td style="border:none"><button class="rowdel" onclick="if(confirm('Delete this row?')){B.sheet.rows.splice(${i},1);save();render();}">✕</button></td></tr>`).join('')}</tbody></table></div>
   <button class="btn tiny" style="margin-top:10px" onclick="B.sheet.rows.push({brand:B.name.toUpperCase(),status:'Not Started',strategist:'Evan'});save();render()">＋ Add row</button>`;
 }
 function copySheet(){
-  const tsv=[SHEET_COLS.join('\t'),...B.sheet.rows.map(r=>SHEET_KEYS.map(k=>r[k]||'').join('\t'))].join('\n');
+  const tsv=[SHEET_COLS.join('\t'),...B.sheet.rows.map(r=>SHEET_KEYS.map(k=>SHEET_DATES.includes(k)?fmtDateMDY(r[k]||''):(r[k]||'')).join('\t'))].join('\n');
   navigator.clipboard.writeText(tsv);
 }
 
