@@ -868,6 +868,12 @@ document.addEventListener('input',e=>{
 /* commit-time (blur/enter) work: Variations re-renders, and a custom brief's typed fields normalize (210 → D210) */
 document.addEventListener('change',e=>{if(!B)return;
   if(e.target.dataset?.bid&&e.target.dataset.cell==='vars')render();
+  if(e.target.dataset?.bid&&e.target.dataset.cell==='dateSub'){
+    const bid=e.target.dataset.bid, v=fmtDateMDY(e.target.value);
+    if(v!==e.target.value){e.target.value=v;
+      (B.briefWork[bid]=B.briefWork[bid]||{}).dateSub=v;
+      if(B.sheet)B.sheet.rows.forEach(r=>{if((r.d+r.c)===bid)r.briefDue=v;});
+      save();}}
   const cbid=e.target.dataset?.cbid;
   if(cbid&&e.target.tagName!=='SELECT'){const rec=(B.customBriefs||[]).find(x=>x.id===cbid); if(!rec)return;
     if(/^\d+$/.test(rec.d||''))rec.d='D'+rec.d.padStart(3,'0');
@@ -2679,6 +2685,15 @@ function cardName(c,w){
   return parts.map(p=>p[0]?esc(p[0]):`<span style="color:var(--warn)" title="Missing — fill it here or in the Strategy Sheet">${p[1]}</span>`).join('_');
 }
 function briefVars(c){const w=bw(c.id); return (w.vars!==undefined&&w.vars!=='')?Math.max(1,+w.vars||1):Math.max(1,+c.variants||1);}
+/* brief dates read MM-DD-YY; YYYY-MM-DD (the sheet's usual shape) and slash dates are converted, anything else passes through */
+function fmtDateMDY(v){
+  if(!v)return v; const s=String(v).trim();
+  let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+  if(m)return `${m[2].padStart(2,'0')}-${m[3].padStart(2,'0')}-${m[1].slice(2)}`;
+  m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2}|\d{4})$/);
+  if(m)return `${m[1].padStart(2,'0')}-${m[2].padStart(2,'0')}-${m[3].slice(-2)}`;
+  return v;
+}
 /* the saved roadmap flags a lane when variations diverge between roadmap / sheet / brief */
 function varAlert(l){
   if(!l.conceptNums||!l.delivery)return '';
@@ -2755,7 +2770,7 @@ function briefDocHtml(c,imgSrc){
     ${kv('Client',`${esc(B.name)} (${esc(B.code)})`)}
     ${kv('Card Name',esc(cardTxt))}
     ${kv('Concept Title',esc(cname))}
-    ${kv('Date submitted',esc(w.dateSub!==undefined?w.dateSub:(c.briefDue||'')))}
+    ${kv('Date submitted',esc(fmtDateMDY(w.dateSub!==undefined?w.dateSub:(c.briefDue||''))))}
     ${kv('Written by',esc(w.owner!==undefined?w.owner:(c.owner||'')))}
     ${kv('Sizes',esc((w.sizes||[]).join(', ')))}
     ${kv('QC Check',`${ck(w.qcName)} Name matches Naming Conventions &nbsp;&nbsp; ${ck(w.qcDisc)} Disclaimers checked by QC`)}
@@ -2890,7 +2905,7 @@ function briefHtml(c){
     ${row('Client',`<span>${esc(B.name)} <span class="hint">(${esc(B.code)})</span></span>`)}
     ${row('Card Name',`<span id="cardname-${c.id}" style="font-family:ui-monospace,monospace; font-size:12px">${cardName(c,w)}</span><span class="hint">QC checks this against the naming convention — missing pieces fill in from this brief and the sheet.</span>`)}
     ${row('Concept Title',`<span contenteditable="true" spellcheck="true" data-bid="${c.id}" data-cell="cname" data-ph="✍ concept name" style="border-bottom:2px dashed var(--accent); color:var(--accent); min-width:140px; display:inline-block; outline:none; padding:0 4px" class="cname">${esc((w.cname!==undefined?w.cname:c.conceptName)||'')}</span><span class="hint">fills the Strategy Sheet and the Card Name</span>`)}
-    ${row('Date submitted',inp('dateSub',w.dateSub!==undefined?w.dateSub:(c.briefDue||''),'YYYY-MM-DD — when this brief is delivered','max-width:180px; flex:0 1 180px')+`<span class="hint">syncs with the sheet’s Brief Due Date</span>`)}
+    ${row('Date submitted',inp('dateSub',fmtDateMDY(w.dateSub!==undefined?w.dateSub:(c.briefDue||'')),'MM-DD-YY — when this brief is delivered','max-width:180px; flex:0 1 180px')+`<span class="hint">syncs with the sheet’s Brief Due Date</span>`)}
     ${row('Written by',inp('owner',w.owner!==undefined?w.owner:(c.owner||''),'concept owner','max-width:220px; flex:0 1 220px')+`<span class="hint">syncs with the sheet</span>`)}
     ${row('Sizes',`<span class="chips" style="gap:4px">${[...new Set([...SIZE_OPTS,...pd.sizes,...sizes])].map(o=>`<span class="chip ${sizes.includes(o)?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwArr('${c.id}','sizes','${esc(o)}')">${esc(o)}</span>`).join('')}</span>
       <span style="font-size:11px; font-weight:700; color:${sizeStatus[1]}">${sizeStatus[0]}</span>
@@ -3036,7 +3051,7 @@ ${rows.length?rows.map(([k,lb])=>`  ${lb}:
 ✨ This is an empty brief — fill it with your unique creativity and your spark. Just remember to stick to the test.
 
 1 · MAIN INFORMATION
-Client: ${B.name} (${B.code}) · Concept: ${cname||'[title]'} · Date submitted: ${w.dateSub!==undefined?w.dateSub:(c.briefDue||'[date]')} · Written by: ${w.owner!==undefined?w.owner:(c.owner||'[owner]')}
+Client: ${B.name} (${B.code}) · Concept: ${cname||'[title]'} · Date submitted: ${fmtDateMDY(w.dateSub!==undefined?w.dateSub:(c.briefDue||''))||'[date]'} · Written by: ${w.owner!==undefined?w.owner:(c.owner||'[owner]')}
 Sizes: ${(w.sizes||[]).join(', ')||'[sizes]'} · Variations: ${nV} · Format: ${(w.fmt!==undefined?w.fmt:c.format)||'[format]'} · Menu item: ${(w.route!==undefined?w.route:briefRoute(c.route))||'[route]'}
 DANDA: ${w.danda==='yes'?('YES — '+((w.dandaT||[]).filter(o=>o!=='AI').join(', ')||'flag set')+(w.dandaUI?' · UI: '+w.dandaUI:'')):'No special request'} · Gen AI needed: ${w.genai==='yes'?'YES':'No'}
 QC: ${w.qcName?'☑':'☐'} name matches naming conventions · ${w.qcDisc?'☑':'☐'} disclaimers checked by QC · QC won't check spelling.
