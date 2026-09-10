@@ -854,12 +854,25 @@ document.addEventListener('input',e=>{
     /* selects and the variations count change what the brief shows */
     if(['superStyle','fmt','route','platf'].includes(e.target.dataset.cell))render();
     return;}
+  /* from-scratch briefs: their test setup writes to the customBriefs record */
+  const cbid=e.target.dataset?.cbid;
+  if(cbid){const rec=(B.customBriefs||[]).find(x=>x.id===cbid); if(!rec)return;
+    const f=e.target.dataset.cfield==='c2'?'c':e.target.dataset.cfield;
+    rec[f]=e.target.value; save();
+    if(e.target.tagName==='SELECT')render();
+    return;}
   const p=e.target.dataset?.path; if(!p)return;
   setPath(B,p,e.target.value); save(); if(e.target.dataset.dirty)markDirty();
   if(e.target.dataset.cds)updateCdsPreview();
 });
-/* the Variations count re-renders on commit (blur/enter), not per keystroke, so focus isn't lost mid-typing */
-document.addEventListener('change',e=>{if(B&&e.target.dataset?.bid&&e.target.dataset.cell==='vars')render();});
+/* commit-time (blur/enter) work: Variations re-renders, and a custom brief's typed fields normalize (210 → D210) */
+document.addEventListener('change',e=>{if(!B)return;
+  if(e.target.dataset?.bid&&e.target.dataset.cell==='vars')render();
+  const cbid=e.target.dataset?.cbid;
+  if(cbid&&e.target.tagName!=='SELECT'){const rec=(B.customBriefs||[]).find(x=>x.id===cbid); if(!rec)return;
+    if(/^\d+$/.test(rec.d||''))rec.d='D'+rec.d.padStart(3,'0');
+    if(/^\d+$/.test(rec.c||''))rec.c='C'+rec.c.padStart(3,'0');
+    save(); render();}});
 
 /* theme */
 function applyTheme(){const d=lsGet('sos-theme')==='dark'; document.body.classList.toggle('dark',d);
@@ -2533,7 +2546,31 @@ function conceptList(){
         talent:(l.castings||[]).length===1?l.castings[0]:'',format:(l.formats||[]).length===1?l.formats[0]:'',
         castings:l.castings||[],formats:l.formats||[],notes:l.notes,route:((l.conceptSpecs||[])[k-1]||{}).route||''});});
   }
+  /* briefs started from scratch — everything the roadmap would provide is picked inside the brief, from the Strategy Layer */
+  (B.customBriefs||[]).forEach(cb=>out.push({...cb,custom:true,
+    castings:(segOf(cb.segment)||{}).casting||[],formats:[],notes:'',route:cb.route||'',newIter:cb.newIter||'',
+    owner:cb.owner||'',platform:'',briefDue:'',footageLink:'',visualRef:''}));
   return out;
+}
+function addCustomBrief(){
+  if(!layerComplete()){alert('Complete the Strategy Layer first — a from-scratch brief pulls its personas, segments and angles from it.');return;}
+  B.customBriefs=B.customBriefs||[];
+  const id='X'+Date.now().toString(36);
+  B.customBriefs.push({id,d:'',c:'',ctp:'',segment:'',angle:'',funnel:'',phase:'',hypothesis:'',variants:1,conceptName:'',format:'',talent:''});
+  B.genBriefs=B.genBriefs||[]; B.genBriefs.push(id); B.briefsMade=true; save(); render();
+}
+function clearBrief(id){
+  /* empties the brief but leaves it in place — removing it from the list is the ✕ (ungenBrief) */
+  if(!confirm('Clear this brief?\n\nEverything filled in it (boxes, images, checkboxes) will be wiped and the brief stays here, empty and ready to reuse.'))return;
+  if(B.briefWork)delete B.briefWork[id];
+  save(); render();
+}
+function removeCustomBrief(id){
+  if(!confirm('Delete this from-scratch brief?\n\nUnlike roadmap concepts, it exists only here — deleting it removes it completely.'))return;
+  if(B.briefWork)delete B.briefWork[id];
+  B.genBriefs=(B.genBriefs||[]).filter(x=>x!==id);
+  B.customBriefs=(B.customBriefs||[]).filter(x=>x.id!==id);
+  B.briefsMade=!!B.genBriefs.length; save(); render();
 }
 function toggleGen(id){
   B.pendSel=B.pendSel||{}; B.pendSel[id]=!B.pendSel[id]; render();
@@ -2565,17 +2602,20 @@ function ingestRef(bid){
   inp.click();
 }
 function vBriefs(){
-  if(!B.roadmap&&!sheetComplete())return `<div class="shead"><h2>📝 Brief Maker</h2>
+  if(!B.roadmap&&!sheetComplete()&&!(B.customBriefs||[]).length)return `<div class="shead"><h2>📝 Brief Maker</h2>
     <div class="acts"><button class="btn" onclick="go('flow')">← Back</button></div></div>
     <div class="card"><div class="card-b" style="text-align:center; padding:50px">
     <div style="font-size:34px">📝</div><p style="margin:12px 0; color:var(--ink2)">Briefs are generated per concept from a consolidated Creative Roadmap.<br>The Strategy Layer must be complete; the Roadmap is highly recommended.</p>
-    <button class="btn primary big" onclick="go('roadmap')">Go to Creative Roadmap</button></div></div>`;
+    <div style="display:flex; gap:10px; justify-content:center">
+    <button class="btn primary big" onclick="go('roadmap')">Go to Creative Roadmap</button>
+    <button class="btn big" onclick="addCustomBrief()" title="No roadmap needed — pick CTP, segment, angle, funnel and phase inside the brief, from the Strategy Layer">＋ Start a brief from scratch</button></div></div></div>`;
   const list=conceptList();
   const gen=(B.genBriefs||[]).map(id=>list.find(c=>c.id===id)).filter(Boolean);
   const pending=list.filter(c=>!(B.genBriefs||[]).includes(c.id));
   const selCount=Object.values(B.pendSel||{}).filter(Boolean).length;
   return `<div class="shead"><h2>📝 Brief Maker</h2><span class="hint">${gen.length} of ${list.length} briefs generated</span>
     <div class="acts"><button class="btn" onclick="go('flow')">← Back</button>
+    <button class="btn" onclick="addCustomBrief()" title="No roadmap needed — pick CTP, segment, angle, funnel and phase inside the brief, from the Strategy Layer">＋ From scratch</button>
     ${gen.length?`<button class="btn" onclick="window.print()">🖨 Print all</button>
     <button class="btn primary" onclick="copyAllBriefs()">📋 Copy all</button>`:''}</div></div>
   ${pending.length?`<div class="card no-print"><div class="card-h"><h3>Which briefs do you want to generate?</h3>
@@ -2595,7 +2635,7 @@ function printBrief(id){
   const c=conceptList().find(x=>x.id===id);
   const prevTitle=document.title;
   const cname=(B.briefWork?.[id]?.cname!==undefined?B.briefWork[id].cname:c?.conceptName)||'';
-  document.title=c?`${c.d?c.d+' '+c.c:c.c}${cname?' '+cname:''} — ${B.name} Brief`:prevTitle; /* becomes the PDF filename */
+  document.title=c?`${[c.d&&c.c?c.d+' '+c.c:(c.d||c.c),cname].filter(Boolean).join(' ')||'Custom brief'} — ${B.name} Brief`:prevTitle; /* becomes the PDF filename */
   el.classList.add('print-target'); document.body.classList.add('print-single');
   window.print();
   document.body.classList.remove('print-single'); el.classList.remove('print-target');
@@ -2666,7 +2706,7 @@ function exportBriefDoc(id){
   P.push('','--RS-BRIEF--','');
   const w=bw(id); const cname=(w.cname!==undefined?w.cname:c.conceptName)||'';
   const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([P.join('\r\n')],{type:'application/msword'}));
-  a.download=`${c.d?c.d+' '+c.c:c.id}${cname?' '+cname:''} — ${B.name} Brief.doc`;
+  a.download=`${[c.d&&c.c?c.d+' '+c.c:(c.d||c.c),cname].filter(Boolean).join(' ')||'Custom brief'} — ${B.name} Brief.doc`;
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
 }
 function briefDocHtml(c,imgSrc){
@@ -2752,8 +2792,10 @@ function briefDocHtml(c,imgSrc){
   </body></html>`;
 }
 function deleteRoadmap(){
-  if(!confirm('Delete this roadmap?\n\nThe Strategy Sheet and the briefs generated from it will also be cleared.'))return;
-  B.roadmap=null; B.sheet=null; B.genBriefs=[]; B.pendSel={}; B.briefsMade=false;
+  if(!confirm('Delete this roadmap?\n\nThe Strategy Sheet and the briefs generated from it will also be cleared. From-scratch briefs are kept.'))return;
+  B.roadmap=null; B.sheet=null; B.pendSel={};
+  B.genBriefs=(B.genBriefs||[]).filter(id=>(B.customBriefs||[]).some(cb=>cb.id===id));
+  B.briefsMade=!!B.genBriefs.length;
   save(); render();
 }
 const QC_RULES={
@@ -2825,7 +2867,9 @@ function briefHtml(c){
         <button class="btn tiny" onclick="copyOneBrief('${c.id}')">📋 Copy</button>
         <button class="btn tiny" onclick="exportBriefDoc('${c.id}')" title="Editable Word file — QC can click and edit; GIFs travel inside it">📄 Export DOC</button>
         <button class="btn tiny" onclick="printBrief('${c.id}')">🖨 Export PDF</button>
-        <button class="btn tiny" onclick="ungenBrief('${c.id}')" title="Remove from generated list">✕</button>
+        <button class="btn tiny" onclick="clearBrief('${c.id}')" title="Wipe everything filled in this brief — it stays here, empty and ready to reuse">🧹 Clear</button>
+        ${c.custom?`<button class="btn tiny" onclick="removeCustomBrief('${c.id}')" title="Delete this from-scratch brief completely">✕</button>`
+        :`<button class="btn tiny" onclick="ungenBrief('${c.id}')" title="Remove from generated list (its content is kept)">✕</button>`}
       </span></div>
 
     ${secH('1 · Main information')}
@@ -2847,6 +2891,20 @@ function briefHtml(c){
     ${row('Gen AI needed',`<span class="chips" style="gap:4px"><span class="chip ${w.genai==='yes'?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','genai','yes')">Yes</span><span class="chip ${!w.genai||w.genai==='no'?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','genai','no')">No</span></span>${w.genai==='yes'?`<span class="hint">remember the “features synthetic talent” disclaimer</span>`:''}`)}
 
     ${secH('2 · Testing info')}
+    ${c.custom?(()=>{ /* from-scratch brief: what the roadmap would provide is picked here, from the Strategy Layer */
+      const cs=(cf,val,opts,ph)=>`<select data-cbid="${c.id}" data-cfield="${cf}" style="border:1px solid var(--line2); background:var(--card2); color:var(--ink); border-radius:7px; font-size:12px; padding:4px 6px"><option value="">${ph}</option>${opts.map(o=>`<option ${val===o?'selected':''}>${esc(o)}</option>`).join('')}</select>`;
+      const ci=(cf,val,ph,wd)=>`<input type="text" data-cbid="${c.id}" data-cfield="${cf}" value="${esc(val||'')}" placeholder="${ph}" style="border:1.5px dashed var(--line2); background:var(--card2); color:var(--ink); border-radius:7px; padding:4px 8px; font:inherit; font-size:12px; width:${wd||'110px'}">`;
+      return `<div class="no-print" style="display:flex; gap:7px; flex-wrap:wrap; align-items:center; margin:6px 0 10px; padding:9px 12px; background:var(--card2); border-radius:10px">
+        <b style="font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink3)">Set up this test</b>
+        ${cs('ctp',c.ctp,L.ctps.map(x=>x.name),'CTP…')}
+        ${cs('segment',c.segment,L.segments.map(x=>x.name),'Segment…')}
+        ${cs('angle',c.angle,L.angles.map(x=>x.name),'Angle…')}
+        ${cs('funnel',c.funnel,['TOFU','MOFU','BOFU'],'Funnel…')}
+        ${cs('phase',c.phase,['Explore','Exploit','Amplify'],'Phase…')}
+        ${(segOf(c.segment)&&(segOf(c.segment).casting||[]).length)?cs('talent',c.talent,segOf(c.segment).casting,'Casting…'):''}
+        ${ci('d',c.d,'D###','72px')}${ci('c2',c.c,'C###','72px')}
+        ${ci('hypothesis',c.hypothesis,'hypothesis — what is this test trying to learn?','340px')}
+      </div>`;})():''}
     <div class="lead">
       You'll be creating a concept to sell <b>${esc(L.product.name)}</b> from <b>${esc(B.name)}</b>. Your ultimate goal is to <b>${L.product.kpi?esc(L.product.kpi):'<span style="color:var(--warn)">[brand main KPI — set it in the Strategy Layer product card]</span>'}</b>.<br>
       You'll be writing for <b>${esc(seg?seg.name:c.segment)}</b>${castLine?`, ${castLine}`:''}${behLine} — <b>${esc(ctp.name||c.ctp)}</b>.${ctp.insight?` <i>${esc(ctp.insight)}</i>`:''}<br>
