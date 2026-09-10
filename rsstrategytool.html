@@ -2565,6 +2565,15 @@ function clearBrief(id){
   if(B.briefWork)delete B.briefWork[id];
   save(); render();
 }
+function deleteBrief(id){
+  /* deletes a roadmap/sheet brief: content wiped AND the concept stops showing up in the
+     "Which briefs do you want to generate?" picker (recoverable from the picker's restore link) */
+  if(!confirm('Delete this brief?\n\nIts content is wiped and the concept will NOT appear again in the generate list. The concept itself stays in the roadmap/sheet, and you can restore it to the list later.'))return;
+  if(B.briefWork)delete B.briefWork[id];
+  B.genBriefs=(B.genBriefs||[]).filter(x=>x!==id);
+  B.briefHidden=B.briefHidden||[]; if(!B.briefHidden.includes(id))B.briefHidden.push(id);
+  B.briefsMade=!!B.genBriefs.length; save(); render();
+}
 function removeCustomBrief(id){
   if(!confirm('Delete this from-scratch brief?\n\nUnlike roadmap concepts, it exists only here — deleting it removes it completely.'))return;
   if(B.briefWork)delete B.briefWork[id];
@@ -2611,7 +2620,9 @@ function vBriefs(){
     <button class="btn big" onclick="addCustomBrief()" title="No roadmap needed — pick CTP, segment, angle, funnel and phase inside the brief, from the Strategy Layer">＋ Start a brief from scratch</button></div></div></div>`;
   const list=conceptList();
   const gen=(B.genBriefs||[]).map(id=>list.find(c=>c.id===id)).filter(Boolean);
-  const pending=list.filter(c=>!(B.genBriefs||[]).includes(c.id));
+  const hidden=B.briefHidden||[];
+  const pending=list.filter(c=>!(B.genBriefs||[]).includes(c.id)&&!hidden.includes(c.id));
+  const hiddenCount=list.filter(c=>hidden.includes(c.id)&&!(B.genBriefs||[]).includes(c.id)).length;
   const selCount=Object.values(B.pendSel||{}).filter(Boolean).length;
   return `<div class="shead"><h2>📝 Brief Maker</h2><span class="hint">${gen.length} of ${list.length} briefs generated</span>
     <div class="acts"><button class="btn" onclick="go('flow')">← Back</button>
@@ -2624,10 +2635,12 @@ function vBriefs(){
       ${pending.map(c=>`<label class="pick"><input type="checkbox" ${B.pendSel?.[c.id]?'checked':''} onchange="toggleGen('${c.id}')">
         <span><b>${c.d?`${c.d} · ${c.c}`:esc(c.c)}</b><br><span class="hint">${esc(c.ctp)} + ${esc(c.angle)} · ${esc(c.funnel)} · ${esc(c.phase)}</span></span></label>`).join('')}
     </div>
-    <div style="margin-top:14px; display:flex; gap:8px">
+    <div style="margin-top:14px; display:flex; gap:8px; align-items:center">
       <button class="btn primary" ${selCount?'':'disabled'} onclick="generateSel()">Generate ${selCount||''} brief${selCount===1?'':'s'}</button>
-      <button class="btn tiny" onclick="B.pendSel=Object.fromEntries(conceptList().filter(c=>!(B.genBriefs||[]).includes(c.id)).map(c=>[c.id,true]));render()">Select all</button>
-    </div></div></div>`:''}
+      <button class="btn tiny" onclick="B.pendSel=Object.fromEntries(conceptList().filter(c=>!(B.genBriefs||[]).includes(c.id)&&!(B.briefHidden||[]).includes(c.id)).map(c=>[c.id,true]));render()">Select all</button>
+      ${hiddenCount?`<button class="btn tiny" onclick="B.briefHidden=[];save();render()" title="Deleted briefs' concepts come back to this list (empty)">↩ Restore ${hiddenCount} deleted</button>`:''}
+    </div></div></div>`
+  :hiddenCount?`<div class="no-print hint" style="margin:8px 0">${hiddenCount} deleted brief${hiddenCount===1?'':'s'} hidden from the generate list — <a href="#" style="color:var(--accent)" onclick="B.briefHidden=[];save();render();return false">restore</a></div>`:''}
   ${gen.map((c)=>briefHtml(c)).join('')}`;
 }
 function printBrief(id){
@@ -2868,8 +2881,9 @@ function briefHtml(c){
         <button class="btn tiny" onclick="exportBriefDoc('${c.id}')" title="Editable Word file — QC can click and edit; GIFs travel inside it">📄 Export DOC</button>
         <button class="btn tiny" onclick="printBrief('${c.id}')">🖨 Export PDF</button>
         <button class="btn tiny" onclick="clearBrief('${c.id}')" title="Wipe everything filled in this brief — it stays here, empty and ready to reuse">🧹 Clear</button>
-        ${c.custom?`<button class="btn tiny" onclick="removeCustomBrief('${c.id}')" title="Delete this from-scratch brief completely">✕</button>`
-        :`<button class="btn tiny" onclick="ungenBrief('${c.id}')" title="Remove from generated list (its content is kept)">✕</button>`}
+        ${c.custom?`<button class="btn tiny" onclick="removeCustomBrief('${c.id}')" title="Delete this from-scratch brief completely">🗑 Delete</button>`
+        :`<button class="btn tiny" onclick="deleteBrief('${c.id}')" title="Delete: wipe the content and keep this concept OUT of the generate list (restorable)">🗑 Delete</button>
+        <button class="btn tiny" onclick="ungenBrief('${c.id}')" title="Remove from generated list (its content is kept; it reappears in the picker)">✕</button>`}
       </span></div>
 
     ${secH('1 · Main information')}
