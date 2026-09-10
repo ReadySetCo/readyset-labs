@@ -793,7 +793,7 @@ const STRATEGISTS=[
 
 /* ══════════ state ══════════ */
 const lsGet=k=>{try{return localStorage.getItem(k);}catch(e){return null;}};
-const lsSet=(k,v)=>{try{localStorage.setItem(k,v);}catch(e){}};
+const lsSet=(k,v)=>{try{localStorage.setItem(k,v); return true;}catch(e){return false;}};
 const esc=s=>String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 let route={view:'home',strategist:null,brand:null};
 let B=null; // current brand state
@@ -833,19 +833,24 @@ function loadBrand(code){
     return;}}catch(e){}
   B=blankBrand(def);
 }
-const save=()=>lsSet('sos-v1-'+B.code,JSON.stringify(B));
+const save=()=>{const ok=lsSet('sos-v1-'+B.code,JSON.stringify(B));
+  /* browser storage is ~5MB per origin — GIFs attached to briefs are the usual culprit when it fills up */
+  if(!ok&&!save._warned){save._warned=true;
+    alert('⚠ Could not save — browser storage is full (usually large GIFs attached to briefs). Remove or shrink some images: changes made after this warning will be lost when the tab closes.');}};
 function setPath(o,p,v){const ks=p.split('.'); const last=ks.pop(); ks.reduce((a,k)=>a[k],o)[last]=v;}
 document.addEventListener('input',e=>{
   if(!B)return;
   const bid=e.target.dataset?.bid;
   if(bid){
-    const val=e.target.matches('select,input,textarea')?e.target.value:e.target.textContent;
+    const val=e.target.type==='checkbox'?e.target.checked:(e.target.matches('select,input,textarea')?e.target.value:e.target.textContent);
     B.briefWork=B.briefWork||{}; (B.briefWork[bid]=B.briefWork[bid]||{})[e.target.dataset.cell]=val;
     /* brief fields that sync back to the Strategy Sheet rows of this concept */
     const SY={cname:'conceptName',fmt:'format',platf:'platform',owner:'owner',dateSub:'briefDue',scf:'footageLink',vrefLink:'visualRef'};
     const sk=SY[e.target.dataset.cell];
     if(sk&&B.sheet)B.sheet.rows.forEach(r=>{if((r.d+r.c)===bid)r[sk]=val;});
     save();
+    /* the Card Name preview follows the Concept Title live, without re-rendering (the caret must stay put) */
+    if(e.target.dataset.cell==='cname'){const cc=conceptList().find(x=>x.id===bid), el=document.getElementById('cardname-'+bid); if(cc&&el)el.innerHTML=cardName(cc,B.briefWork[bid]);}
     /* selects and the variations count change what the brief shows */
     if(['superStyle','fmt','route','platf'].includes(e.target.dataset.cell))render();
     return;}
@@ -2608,6 +2613,10 @@ function bwArr(id,k,v){B.briefWork=B.briefWork||{};const w=B.briefWork[id]=B.bri
 function PD(){const p=B.procDef=B.procDef||{}; p.sizes=p.sizes||[]; p.qcLink=p.qcLink||''; p.tlLink=p.tlLink||''; p.brandGuide=p.brandGuide||''; return p;}
 const SIZE_OPTS=['9x16','1x1','4x5','16x9'];
 const CRED_URL='https://app.notion.com/p/Our-Tools-Credentials-1a6f4c5c52af8021abc2c03b969307a3';
+/* the brief's Menu Item is the production style (Felipe, Sep 10) — the roadmap's finer routes map onto it */
+const BRIEF_MENU=['UGC','ANIMATION','STUDIO','HQ UGC','CREATOR'];
+const ROUTE_TO_BRIEF={UGC_A:'UGC',UGC_B:'UGC',UGC_C:'UGC',EDITOR:'UGC',PRIME_UGC:'HQ UGC',CREATOR:'CREATOR',ANIM_SIMPLE:'ANIMATION',ANIM_MID:'ANIMATION',ANIM_COMPLEX:'ANIMATION'};
+const briefRoute=r=>ROUTE_TO_BRIEF[r]||r||'';
 const newIterTag=v=>/^it/i.test(v||'')?'ITR':/^new/i.test(v||'')?'NEW':(v||'');
 function cardName(c,w){
   const parts=[['RS'],[B.code],[c.d,'D###'],[c.c,'C###'],
@@ -2627,6 +2636,119 @@ function varAlert(l){
     if(+l.variants)vals.push(+l.variants);
     return vals.length>1&&new Set(vals).size>1;});
   return bad?` <span style="color:var(--warn); font-weight:700; font-size:11px" title="The number of variations differs between this roadmap, the Strategy Sheet and/or a brief. The brief’s Variations field is the editable source — align them.">⚠ variations</span>`:'';
+}
+/* attach a GIF/image to a Visuals cell — stored RAW (no canvas re-encode) so GIFs keep animating in the app */
+function ingestCellImg(bid,key){
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='image/gif,image/png,image/jpeg,image/webp';
+  inp.onchange=()=>{const f=inp.files[0]; if(!f)return;
+    if(f.size>2500000){alert(`That file is ${(f.size/1e6).toFixed(1)}MB. Keep brief images under 2.5MB — they live inside the browser save and big files fill it up. Trim or compress the GIF first.`);return;}
+    const r=new FileReader();
+    r.onload=()=>{B.briefWork=B.briefWork||{};(B.briefWork[bid]=B.briefWork[bid]||{})[key]=r.result; save(); render();};
+    r.readAsDataURL(f);};
+  inp.click();
+}
+/* export one brief as an editable Word file. The container is MHTML saved as .doc — Word opens it
+   natively and ignores data: URIs, so every image travels as its own MIME part. QC edits it directly.
+   (Word shows a GIF's first frame; full animation plays in the app or any browser.) */
+function exportBriefDoc(id){
+  const c=conceptList().find(x=>x.id===id); if(!c)return;
+  const imgs=[];
+  const imgSrc=u=>{if(!u)return null; if(/^https?:/.test(u))return u;
+    const m=u.match(/^data:(image\/[a-z.+-]+);base64,(.+)$/); if(!m)return null;
+    const ext=({'image/jpeg':'jpg','image/png':'png','image/gif':'gif','image/webp':'webp'})[m[1]]||'img';
+    const loc=`img${imgs.length}.${ext}`; imgs.push({loc,mime:m[1],b64:m[2]}); return loc;};
+  const html=briefDocHtml(c,imgSrc);
+  const b64html=btoa(unescape(encodeURIComponent(html))).replace(/(.{76})/g,'$1\r\n');
+  const P=['MIME-Version: 1.0','Content-Type: multipart/related; boundary="RS-BRIEF"; type="text/html"','','--RS-BRIEF',
+    'Content-Type: text/html; charset="utf-8"','Content-Transfer-Encoding: base64','Content-Location: brief.htm','',b64html];
+  imgs.forEach(im=>P.push('','--RS-BRIEF',`Content-Type: ${im.mime}`,'Content-Transfer-Encoding: base64',`Content-Location: ${im.loc}`,'',im.b64.replace(/(.{76})/g,'$1\r\n')));
+  P.push('','--RS-BRIEF--','');
+  const w=bw(id); const cname=(w.cname!==undefined?w.cname:c.conceptName)||'';
+  const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([P.join('\r\n')],{type:'application/msword'}));
+  a.download=`${c.d?c.d+' '+c.c:c.id}${cname?' '+cname:''} — ${B.name} Brief.doc`;
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
+function briefDocHtml(c,imgSrc){
+  const L=B.layer, w=bw(c.id), pd=PD();
+  const ctp=personaOf(c.ctp)||L.ctps.find(x=>x.name===c.ctp)||{}; const seg=segOf(c.segment);
+  const nV=briefVars(c);
+  const cname=(w.cname!==undefined?w.cname:c.conceptName)||'';
+  const cardTxt=['RS',B.code,c.d||'D###',c.c||'C###',cname||'ConceptName',newIterTag(c.newIter)||'NEW/ITR',(w.fmt!==undefined?w.fmt:c.format)||'TYPE'].join('_');
+  const ck=v=>v?'☑':'☐';
+  const kv=(k,v)=>`<tr><td style="width:170px; background:#f2f0fa"><b>${k}</b></td><td>${v||'—'}</td></tr>`;
+  const li=a=>a.filter(x=>x[0]).map(x=>`<li><b>${esc(x[0])}</b>${x[1]?` — ${esc(x[1])}`:''}</li>`).join('');
+  const H=t=>`<h2 style="font-size:13pt; color:#6b4fd8; border-bottom:2px solid #6b4fd8; padding-bottom:3px">${t}</h2>`;
+  const SECS=[['h','Hook'],['b','Body'],['cl','Close']];
+  const tbl=vi=>{
+    const iter=Array.isArray(w['it'+vi])?w['it'+vi]:[];
+    const rows=SECS.filter(([k])=>vi===0||!iter.length||iter.includes(k));
+    const cell=(sec,col)=>{let t=esc(w[`t${vi}${sec}_${col}`]||'');
+      if(col==='v'){const loc=imgSrc(w[`t${vi}${sec}_vimg`]); if(loc)t+=`${t?'<br>':''}<img src="${loc}" style="max-width:280px">`;}
+      return `<td style="vertical-align:top">${t||'&nbsp;'}</td>`;};
+    return `<h3 style="font-size:11pt">Variation V${String(vi+1).padStart(2,'0')}${vi&&(iter.length||w['it'+vi+'o'])?` — iterates on: ${esc([...iter.map(k=>({h:'Hook',b:'Body',cl:'Close'})[k]),w['it'+vi+'o']].filter(Boolean).join(', '))}`:''}</h3>
+    <table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse; width:100%; font-size:9.5pt">
+      <tr style="background:#f2f0fa"><th>Section</th><th style="width:26%">Visuals</th><th style="width:30%">Copy &amp; Voiceover</th><th style="width:20%">Notes</th><th>Disclaimers</th></tr>
+      ${rows.map(([k,lb])=>`<tr><td><b>${lb}</b></td>${cell(k,'v')}${cell(k,'c')}${cell(k,'n')}${cell(k,'d')}</tr>`).join('')}
+    </table>`;};
+  const superLoc=imgSrc(w.superRef||SUPER_REFS[w.superStyle]);
+  const castTxt=c.talent?esc(c.talent):(seg?`a ${esc(seg.age)} ${esc(seg.gender||'person')}`:'');
+  return `<html><head><meta charset="utf-8"><title>${esc(cardTxt)}</title></head>
+  <body style="font-family:Arial,sans-serif; font-size:10.5pt">
+  <h1 style="font-size:15pt">${esc(cardTxt)} — ${esc(B.name)}</h1>
+  <p style="background:#f2eaff; padding:8px">✨ This is an empty brief — fill it with your unique creativity and your spark. Just remember to stick to the test.</p>
+  ${H('1 · Main information')}
+  <table border="1" cellspacing="0" cellpadding="5" style="border-collapse:collapse; width:100%; font-size:10pt">
+    ${kv('Client',`${esc(B.name)} (${esc(B.code)})`)}
+    ${kv('Card Name',esc(cardTxt))}
+    ${kv('Concept Title',esc(cname))}
+    ${kv('Date submitted',esc(w.dateSub!==undefined?w.dateSub:(c.briefDue||'')))}
+    ${kv('Written by',esc(w.owner!==undefined?w.owner:(c.owner||'')))}
+    ${kv('Sizes',esc((w.sizes||[]).join(', ')))}
+    ${kv('QC Check',`${ck(w.qcName)} Name matches Naming Conventions &nbsp;&nbsp; ${ck(w.qcDisc)} Disclaimers checked by QC`)}
+    ${kv('Variations',nV)}
+    ${kv('Format',esc((w.fmt!==undefined?w.fmt:c.format)||''))}
+    ${kv('Menu Item',esc((w.route!==undefined?w.route:briefRoute(c.route))||''))}
+    ${kv('DANDA',w.danda==='yes'?`YES — ${esc((w.dandaT||[]).filter(o=>o!=='AI').join(', ')||'flag set')}${w.dandaUI?' · UI: '+esc(w.dandaUI):''}`:'No special request')}
+    ${kv('Gen AI needed',w.genai==='yes'?'Yes — remember the “features synthetic talent” disclaimer':'No')}
+  </table>
+  ${H('2 · Testing info')}
+  <p>You'll be creating a concept to sell <b>${esc(L.product.name)}</b> from <b>${esc(B.name)}</b>. Your ultimate goal is to <b>${esc(L.product.kpi||'[brand main KPI]')}</b>.<br>
+  You'll be writing for <b>${esc(seg?seg.name:c.segment)}</b>${castTxt?`, ${castTxt}`:''}${seg&&seg.beh?` who ${esc(seg.beh)}`:''} — <b>${esc(ctp.name||c.ctp)}</b>.${ctp.insight?` <i>${esc(ctp.insight)}</i>`:''}<br>
+  ${(ctp.clothingPersona||[]).length?`Clothing persona: <b>${esc(ctp.clothingPersona.join(' / '))}</b>.<br>`:''}
+  Your angle to approach them will be <b>${esc(c.angle)}</b>.<br>
+  This is what we want to test: <b>${esc(c.hypothesis||'—')}</b><br>
+  Their level of awareness is <b>${esc(c.funnel)}</b> and you'll be doing a/an <b>${esc(c.phase)}</b> concept.<br>
+  ${c.talent?`Suggested casting: <b>${esc(c.talent)}</b>.<br>`:(c.castings||[]).length?`Suggested casting (pick from): <b>${esc(c.castings.join(', '))}</b>.<br>`:''}
+  Target Platform: <b>${esc((w.platf!==undefined?w.platf:c.platform)||'—')}</b></p>
+  ${H('3 · Creative info')}
+  <table border="1" cellspacing="0" cellpadding="5" style="border-collapse:collapse; width:100%; font-size:10pt">
+    ${kv('Based on a past winner?',esc(w.pastWin||''))}
+    ${c.notes?kv('Notes from the strategist',esc(c.notes)):''}
+    ${kv('Extra insights',esc(w.xins||''))}
+    ${kv('Visual reference',esc((w.vrefLink!==undefined?w.vrefLink:c.visualRef)||''))}
+    ${!w.cdsHide&&cdsStatement()?kv('Creative Direction',esc(cdsRememberLine())):''}
+    ${kv('Concept description',esc(w.desc||''))}
+    ${kv('Footage link (SCF)',esc((w.scf!==undefined?w.scf:c.footageLink)||''))}
+    ${kv('Past delivery reference',esc(w.pastRef||''))}
+    ${kv('Incoming footage',esc(w.incFoot||''))}
+    ${kv('Super Style',`${esc(w.superStyle||'—')}${superLoc?`<br><img src="${superLoc}" style="max-height:70px">`:''}`)}
+    ${kv('Voiceover',w.voOn==='yes'?`YES — ${esc(w.voG||'[voice]')} · style ${esc(w.voStyle||'—')} · tone ${esc(w.voTone||'—')} · ref ${esc(w.voRef||'—')} · ElevenLabs ${esc(w.voEleven||'—')}`:w.voOn==='no'?'No':'[say yes or no]')}
+    ${kv('Music',w.muOn==='yes'?`YES — style ${esc(w.muStyle||'—')} · tone ${esc(w.muTone||'—')} · tracks ${esc(w.muLinks||'—')}`:w.muOn==='no'?'No':'[say yes or no]')}
+    ${(w.danda==='yes'||w.genai==='yes')?kv('VFX / Animation / Design / Gen AI',`${esc(w.vfxTxt||'')}${w.vfxRef?'<br>Ref: '+esc(w.vfxRef):''}${w.vfxMon?'<br>Monday: '+esc(w.vfxMon):''}`):''}
+  </table>
+  <h3 style="font-size:11pt">Do's &amp; Don'ts — ${esc(B.name)}</h3>
+  <ul style="font-size:9.5pt">${[...QC_RULES.disclaimers,...QC_RULES.copy,...QC_RULES.visual].map(x=>`<li>${esc(x)}</li>`).join('')}${w.ddTxt?`<li>${esc(w.ddTxt)}</li>`:''}</ul>
+  <p style="font-size:9.5pt">Links: QC checklist ${esc(pd.qcLink||'—')} · Team leads ${esc(pd.tlLink||'—')} · Brand guidelines ${esc(pd.brandGuide||'—')}</p>
+  <h3 style="font-size:11pt">Please, remember</h3>
+  <p><b>Value props</b></p><ul style="font-size:9.5pt">${li(L.valueProps)}</ul>
+  <p><b>Key differentiators</b></p><ul style="font-size:9.5pt">${li(L.diffs)}</ul>
+  ${H('4 · The creative brief — Ad direction')}
+  ${Array.from({length:nV},(_,vi)=>tbl(vi)).join('')}
+  <h3 style="font-size:11pt">Feedback Best Practices (Scope comments)</h3>
+  <ul style="font-size:9.5pt"><li>Be specific about the change you want. If you want the editor to replace footage, specify what you want to showcase.</li>
+  <li>If there's something you don't like, specify exactly what.</li>
+  <li>If you want to try something you're not sure about, message the editor on Slack rather than leaving an ambiguous comment.</li></ul>
+  </body></html>`;
 }
 function deleteRoadmap(){
   if(!confirm('Delete this roadmap?\n\nThe Strategy Sheet and the briefs generated from it will also be cleared.'))return;
@@ -2676,7 +2798,12 @@ function briefHtml(c){
   const seqTable=vi=>{
     const iter=Array.isArray(w['it'+vi])?w['it'+vi]:[];
     const rows=SECS.filter(([k])=>vi===0||!iter.length||iter.includes(k));
-    const cell2=(sec,col,ph)=>`<td>${area(`t${vi}${sec}_${col}`,w[`t${vi}${sec}_${col}`],ph)}</td>`;
+    const cell2=(sec,col,ph)=>{const key=`t${vi}${sec}_${col}`;
+      if(col!=='v')return `<td>${area(key,w[key],ph)}</td>`;
+      const ik=key+'img'; /* Visuals cells take a GIF/image — stored raw so GIFs keep animating here */
+      return `<td>${area(key,w[key],ph)}
+        ${w[ik]?`<div style="margin:4px; position:relative"><img src="${w[ik]}" style="max-width:100%; max-height:140px; border-radius:6px; border:1px solid var(--line)"><button class="rowdel no-print" style="position:absolute; top:2px; right:2px" title="Remove image" onclick="delete B.briefWork['${c.id}']['${ik}'];save();render()">✕</button></div>`:''}
+        <div class="no-print" style="margin:2px 4px 4px"><button class="btn tiny" onclick="ingestCellImg('${c.id}','${ik}')">📎 GIF / image</button></div></td>`;};
     return `<div style="margin-top:${vi?18:8}px">
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
         <b style="font-size:13px">Variation V${String(vi+1).padStart(2,'0')}</b>
@@ -2695,25 +2822,28 @@ function briefHtml(c){
     <div class="spark" style="display:flex; align-items:center; gap:10px">✨ This is an empty brief — fill it with your unique creativity and your spark. Just remember to stick to the test.
       <span style="margin-left:auto; display:flex; gap:6px" class="no-print">
         <button class="btn tiny" onclick="copyOneBrief('${c.id}')">📋 Copy</button>
+        <button class="btn tiny" onclick="exportBriefDoc('${c.id}')" title="Editable Word file — QC can click and edit; GIFs travel inside it">📄 Export DOC</button>
         <button class="btn tiny" onclick="printBrief('${c.id}')">🖨 Export PDF</button>
         <button class="btn tiny" onclick="ungenBrief('${c.id}')" title="Remove from generated list">✕</button>
       </span></div>
 
     ${secH('1 · Main information')}
     ${row('Client',`<span>${esc(B.name)} <span class="hint">(${esc(B.code)})</span></span>`)}
-    ${row('Card Name',`<span style="font-family:ui-monospace,monospace; font-size:12px">${cardName(c,w)}</span><span class="hint">QC checks this against the naming convention — missing pieces fill in from this brief and the sheet.</span>`)}
+    ${row('Card Name',`<span id="cardname-${c.id}" style="font-family:ui-monospace,monospace; font-size:12px">${cardName(c,w)}</span><span class="hint">QC checks this against the naming convention — missing pieces fill in from this brief and the sheet.</span>`)}
     ${row('Concept Title',`<span contenteditable="true" spellcheck="true" data-bid="${c.id}" data-cell="cname" data-ph="✍ concept name" style="border-bottom:2px dashed var(--accent); color:var(--accent); min-width:140px; display:inline-block; outline:none; padding:0 4px" class="cname">${esc((w.cname!==undefined?w.cname:c.conceptName)||'')}</span><span class="hint">fills the Strategy Sheet and the Card Name</span>`)}
     ${row('Date submitted',inp('dateSub',w.dateSub!==undefined?w.dateSub:(c.briefDue||''),'YYYY-MM-DD — when this brief is delivered','max-width:180px; flex:0 1 180px')+`<span class="hint">syncs with the sheet’s Brief Due Date</span>`)}
     ${row('Written by',inp('owner',w.owner!==undefined?w.owner:(c.owner||''),'concept owner','max-width:220px; flex:0 1 220px')+`<span class="hint">syncs with the sheet</span>`)}
     ${row('Sizes',`<span class="chips" style="gap:4px">${[...new Set([...SIZE_OPTS,...pd.sizes,...sizes])].map(o=>`<span class="chip ${sizes.includes(o)?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwArr('${c.id}','sizes','${esc(o)}')">${esc(o)}</span>`).join('')}</span>
       <span style="font-size:11px; font-weight:700; color:${sizeStatus[1]}">${sizeStatus[0]}</span>
       <button class="btn tiny no-print" title="Save this selection as ${esc(B.name)}’s default sizes (Process Definition wiring pending — manual for now)" onclick="PD().sizes=(bw('${c.id}').sizes||[]).slice();save();render()">Set as client default</button>`)}
-    ${row('QC Check',`<span style="font-size:12.5px">☐ Name matches Naming Conventions · ☐ Disclaimers checked by QC · <i>QC won’t check spelling — every box here has the browser spell-checker on.</i></span>`)}
+    ${row('QC Check',`<label style="font-size:12.5px; display:inline-flex; align-items:center; gap:5px; cursor:pointer"><input type="checkbox" data-bid="${c.id}" data-cell="qcName" ${w.qcName?'checked':''}> Name matches Naming Conventions</label> · <label style="font-size:12.5px; display:inline-flex; align-items:center; gap:5px; cursor:pointer"><input type="checkbox" data-bid="${c.id}" data-cell="qcDisc" ${w.qcDisc?'checked':''}> Disclaimers checked by QC</label> · <i style="font-size:12px">QC won’t check spelling — every box here has the browser spell-checker on.</i>`)}
     ${row('Variations',`<input type="number" min="1" data-bid="${c.id}" data-cell="vars" value="${nV}" style="width:64px; border:1px solid var(--line2); background:var(--card2); color:var(--ink); border-radius:7px; padding:4px 6px; font:inherit"> <span class="hint">one sequence table per variation below · the saved roadmap flags ⚠ if this diverges from it</span>`)}
     ${row('Format',selc('fmt',w.fmt!==undefined?w.fmt:c.format,AD_FORMATS)+`<span class="hint">syncs with the sheet</span>`)}
-    ${row('Menu Item',selc('route',w.route!==undefined?w.route:(c.route||''),MENU.map(m=>m.id),'— not set —')+(()=>{const m=menuOf(w.route!==undefined?w.route:c.route); return m?`<span class="hint">${esc(m.name)}</span>`:`<span class="hint">the production route, from the roadmap</span>`;})())}
-    ${row('DANDA',`<span class="chips" style="gap:4px"><span class="chip ${!dandaOn?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','danda','no')">No special request</span><span class="chip ${dandaOn?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','danda','yes')">Yes — VFX / Animation / Design / AI</span></span>
-      ${dandaOn?`<span class="chips" style="gap:4px">${['VFX','Animation','Design','AI'].map(o=>`<span class="chip ${(w.dandaT||[]).includes(o)?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwArr('${c.id}','dandaT','${o}')">${o}</span>`).join('')}</span>${inp('dandaUI',w.dandaUI,'if UI is involved, note which UI is needed','max-width:300px; flex:0 1 300px')}`:''}`)}
+    ${(()=>{const rv=w.route!==undefined?w.route:briefRoute(c.route);
+      return row('Menu Item',selc('route',rv,[...BRIEF_MENU,...(rv&&!BRIEF_MENU.includes(rv)?[rv]:[])],'— not set —')+`<span class="hint">production style: UGC · Animation · Studio · HQ UGC · Creator${c.route&&briefRoute(c.route)!==rv?` (roadmap route: ${esc(c.route)})`:''}</span>`);})()}
+    ${row('DANDA',`<span class="chips" style="gap:4px"><span class="chip ${!dandaOn?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','danda','no')">No special request</span><span class="chip ${dandaOn?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','danda','yes')">Yes</span></span>`)}
+    ${dandaOn?row('&nbsp;',`<span class="chips" style="gap:4px">${['VFX','Animation','Design'].map(o=>`<span class="chip ${(w.dandaT||[]).includes(o)?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwArr('${c.id}','dandaT','${o}')">${o}</span>`).join('')}</span>${inp('dandaUI',w.dandaUI,'if UI is involved, note which UI is needed','max-width:300px; flex:0 1 300px')}`):''}
+    ${row('Gen AI needed',`<span class="chips" style="gap:4px"><span class="chip ${w.genai==='yes'?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','genai','yes')">Yes</span><span class="chip ${!w.genai||w.genai==='no'?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','genai','no')">No</span></span>${w.genai==='yes'?`<span class="hint">remember the “features synthetic talent” disclaimer</span>`:''}`)}
 
     ${secH('2 · Testing info')}
     <div class="lead">
@@ -2769,7 +2899,7 @@ function briefHtml(c){
         </div>
       </div>
     </div>
-    ${dandaOn?`<h5>VFX, Animation, Design &amp; AI Requests</h5>
+    ${(dandaOn||w.genai==='yes')?`<h5>VFX, Animation, Design &amp; Gen AI Requests</h5>
     <div style="margin:6px 0">${area('vfxTxt',w.vfxTxt,'Describe the request. Visual references are a MUST for any VFX/animation/design/AI work — style and timing, and which aspects of each reference to follow.')}</div>
     ${row('Reference',inp('vfxRef',w.vfxRef,'link reference images / gifs / videos'))}
     ${row('Monday item',inp('vfxMon',w.vfxMon,'link the Monday.com card (optional)'))}`:''}
@@ -2823,7 +2953,7 @@ function briefTxt(c){
     const rows=SECS.filter(([k])=>vi===0||!iter.length||iter.includes(k));
     return `VARIATION V${String(vi+1).padStart(2,'0')}${vi&&(iter.length||w['it'+vi+'o'])?` — iterates on: ${[...iter.map(k=>({h:'Hook',b:'Body',cl:'Close'})[k]),w['it'+vi+'o']].filter(Boolean).join(', ')}`:''}
 ${rows.map(([k,lb])=>`  ${lb}:
-    Visuals: ${w[`t${vi}${k}_v`]||'[..]'}
+    Visuals: ${w[`t${vi}${k}_v`]||'[..]'}${w[`t${vi}${k}_vimg`]?' (image/GIF attached — see the app or the DOC export)':''}
     Copy & VO: ${w[`t${vi}${k}_c`]||'[..]'}
     Notes: ${w[`t${vi}${k}_n`]||'[..]'}
     Disclaimers: ${w[`t${vi}${k}_d`]||'[..]'}`).join('\n')}`;
@@ -2833,9 +2963,9 @@ ${rows.map(([k,lb])=>`  ${lb}:
 
 1 · MAIN INFORMATION
 Client: ${B.name} (${B.code}) · Concept: ${cname||'[title]'} · Date submitted: ${w.dateSub!==undefined?w.dateSub:(c.briefDue||'[date]')} · Written by: ${w.owner!==undefined?w.owner:(c.owner||'[owner]')}
-Sizes: ${(w.sizes||[]).join(', ')||'[sizes]'} · Variations: ${nV} · Format: ${(w.fmt!==undefined?w.fmt:c.format)||'[format]'} · Menu item: ${(w.route!==undefined?w.route:c.route)||'[route]'}
-DANDA: ${w.danda==='yes'?('YES — '+((w.dandaT||[]).join(', ')||'flag set')+(w.dandaUI?' · UI: '+w.dandaUI:'')):'No special request'}
-QC: name matches naming conventions · disclaimers checked by QC · QC won't check spelling.
+Sizes: ${(w.sizes||[]).join(', ')||'[sizes]'} · Variations: ${nV} · Format: ${(w.fmt!==undefined?w.fmt:c.format)||'[format]'} · Menu item: ${(w.route!==undefined?w.route:briefRoute(c.route))||'[route]'}
+DANDA: ${w.danda==='yes'?('YES — '+((w.dandaT||[]).filter(o=>o!=='AI').join(', ')||'flag set')+(w.dandaUI?' · UI: '+w.dandaUI:'')):'No special request'} · Gen AI needed: ${w.genai==='yes'?'YES':'No'}
+QC: ${w.qcName?'☑':'☐'} name matches naming conventions · ${w.qcDisc?'☑':'☐'} disclaimers checked by QC · QC won't check spelling.
 
 2 · TESTING INFO
 You'll be creating a concept to sell ${L.product.name} from ${B.name}. Your ultimate goal is to ${L.product.kpi||'[brand main KPI]'}.
@@ -2855,7 +2985,7 @@ Footage (SCF): ${(w.scf!==undefined?w.scf:c.footageLink)||'[link]'} · Past deli
 Super style: ${w.superStyle||'[choose]'}${w.superRef?' (custom reference attached — see app/PDF)':''}
 VO: ${w.voOn==='yes'?`YES — ${w.voG||'[voice]'} · style ${w.voStyle||'[..]'} · tone ${w.voTone||'[..]'} · ref ${w.voRef||'—'} · ElevenLabs ${w.voEleven||'—'}`:w.voOn==='no'?'No':'[say yes or no]'}
 Music: ${w.muOn==='yes'?`YES — style ${w.muStyle||'[..]'} · tone ${w.muTone||'[..]'} · tracks ${w.muLinks||'—'}`:w.muOn==='no'?'No':'[say yes or no]'}
-${w.danda==='yes'?`VFX/Anim/Design/AI: ${w.vfxTxt||'[describe]'} · ref ${w.vfxRef||'—'} · Monday ${w.vfxMon||'—'}\n`:''}Do's & Don'ts (${B.name}):
+${(w.danda==='yes'||w.genai==='yes')?`VFX/Anim/Design/GenAI: ${w.vfxTxt||'[describe]'} · ref ${w.vfxRef||'—'} · Monday ${w.vfxMon||'—'}\n`:''}Do's & Don'ts (${B.name}):
 ${[...QC_RULES.disclaimers,...QC_RULES.copy,...QC_RULES.visual].map(x=>'- '+x).join('\n')}
 ${w.ddTxt?'- '+w.ddTxt+'\n':''}Links: QC ${pd.qcLink||'—'} · Team leads ${pd.tlLink||'—'} · Brand guidelines ${pd.brandGuide||'—'}
 
