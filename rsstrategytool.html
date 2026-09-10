@@ -2614,8 +2614,9 @@ function PD(){const p=B.procDef=B.procDef||{}; p.sizes=p.sizes||[]; p.qcLink=p.q
 const SIZE_OPTS=['9x16','1x1','4x5','16x9'];
 const CRED_URL='https://app.notion.com/p/Our-Tools-Credentials-1a6f4c5c52af8021abc2c03b969307a3';
 /* the brief's Menu Item is the production style (Felipe, Sep 10) — the roadmap's finer routes map onto it */
-const BRIEF_MENU=['UGC','ANIMATION','STUDIO','HQ UGC','CREATOR'];
-const ROUTE_TO_BRIEF={UGC_A:'UGC',UGC_B:'UGC',UGC_C:'UGC',EDITOR:'UGC',PRIME_UGC:'HQ UGC',CREATOR:'CREATOR',ANIM_SIMPLE:'ANIMATION',ANIM_MID:'ANIMATION',ANIM_COMPLEX:'ANIMATION'};
+const BRIEF_MENU=['UGC','Elevated Video','3D Animation','2D Animation','Motion Graphics','Creator'];
+/* roadmap routes that map unambiguously; ANIM_* stays unmapped on purpose — the strategist picks 3D/2D/Motion Graphics */
+const ROUTE_TO_BRIEF={UGC_A:'UGC',UGC_B:'UGC',UGC_C:'UGC',EDITOR:'UGC',PRIME_UGC:'Elevated Video',CREATOR:'Creator'};
 const briefRoute=r=>ROUTE_TO_BRIEF[r]||r||'';
 const newIterTag=v=>/^it/i.test(v||'')?'ITR':/^new/i.test(v||'')?'NEW':(v||'');
 function cardName(c,w){
@@ -2840,7 +2841,7 @@ function briefHtml(c){
     ${row('Variations',`<input type="number" min="1" data-bid="${c.id}" data-cell="vars" value="${nV}" style="width:64px; border:1px solid var(--line2); background:var(--card2); color:var(--ink); border-radius:7px; padding:4px 6px; font:inherit"> <span class="hint">one sequence table per variation below · the saved roadmap flags ⚠ if this diverges from it</span>`)}
     ${row('Format',selc('fmt',w.fmt!==undefined?w.fmt:c.format,AD_FORMATS)+`<span class="hint">syncs with the sheet</span>`)}
     ${(()=>{const rv=w.route!==undefined?w.route:briefRoute(c.route);
-      return row('Menu Item',selc('route',rv,[...BRIEF_MENU,...(rv&&!BRIEF_MENU.includes(rv)?[rv]:[])],'— not set —')+`<span class="hint">production style: UGC · Animation · Studio · HQ UGC · Creator${c.route&&briefRoute(c.route)!==rv?` (roadmap route: ${esc(c.route)})`:''}</span>`);})()}
+      return row('Menu Item',selc('route',rv,[...BRIEF_MENU,...(rv&&!BRIEF_MENU.includes(rv)?[rv]:[])],'— not set —')+`<span class="hint">production style${c.route&&briefRoute(c.route)!==rv?` — roadmap route: ${esc(c.route)}`:''}</span>`);})()}
     ${row('DANDA',`<span class="chips" style="gap:4px"><span class="chip ${!dandaOn?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','danda','no')">No special request</span><span class="chip ${dandaOn?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','danda','yes')">Yes</span></span>`)}
     ${dandaOn?row('&nbsp;',`<span class="chips" style="gap:4px">${['VFX','Animation','Design'].map(o=>`<span class="chip ${(w.dandaT||[]).includes(o)?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwArr('${c.id}','dandaT','${o}')">${o}</span>`).join('')}</span>${inp('dandaUI',w.dandaUI,'if UI is involved, note which UI is needed','max-width:300px; flex:0 1 300px')}`):''}
     ${row('Gen AI needed',`<span class="chips" style="gap:4px"><span class="chip ${w.genai==='yes'?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','genai','yes')">Yes</span><span class="chip ${!w.genai||w.genai==='no'?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="bwSet('${c.id}','genai','no')">No</span></span>${w.genai==='yes'?`<span class="hint">remember the “features synthetic talent” disclaimer</span>`:''}`)}
