@@ -2682,15 +2682,15 @@ function briefDocHtml(c,imgSrc){
   const SECS=[['h','Hook'],['b','Body'],['cl','Close']];
   const tbl=vi=>{
     const iter=Array.isArray(w['it'+vi])?w['it'+vi]:[];
-    const rows=SECS.filter(([k])=>vi===0||!iter.length||iter.includes(k));
+    const rows=SECS.filter(([k])=>vi===0||iter.includes(k));
     const cell=(sec,col)=>{let t=esc(w[`t${vi}${sec}_${col}`]||'');
       if(col==='v'){const loc=imgSrc(w[`t${vi}${sec}_vimg`]); if(loc)t+=`${t?'<br>':''}<img src="${loc}" style="max-width:280px">`;}
       return `<td style="vertical-align:top">${t||'&nbsp;'}</td>`;};
     return `<h3 style="font-size:11pt">Variation V${String(vi+1).padStart(2,'0')}${vi&&(iter.length||w['it'+vi+'o'])?` — iterates on: ${esc([...iter.map(k=>({h:'Hook',b:'Body',cl:'Close'})[k]),w['it'+vi+'o']].filter(Boolean).join(', '))}`:''}</h3>
-    <table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse; width:100%; font-size:9.5pt">
+    ${rows.length?`<table border="1" cellspacing="0" cellpadding="6" style="border-collapse:collapse; width:100%; font-size:9.5pt">
       <tr style="background:#f2f0fa"><th>Section</th><th style="width:26%">Visuals</th><th style="width:30%">Copy &amp; Voiceover</th><th style="width:20%">Notes</th><th>Disclaimers</th></tr>
       ${rows.map(([k,lb])=>`<tr><td><b>${lb}</b></td>${cell(k,'v')}${cell(k,'c')}${cell(k,'n')}${cell(k,'d')}</tr>`).join('')}
-    </table>`;};
+    </table>`:`<p style="font-size:9.5pt; color:#888">(no sections selected yet — pick Hook/Body/Close in the app)</p>`}`;};
   const superLoc=imgSrc(w.superRef||SUPER_REFS[w.superStyle]);
   const castTxt=c.talent?esc(c.talent):(seg?`a ${esc(seg.age)} ${esc(seg.gender||'person')}`:'');
   return `<html><head><meta charset="utf-8"><title>${esc(cardTxt)}</title></head>
@@ -2798,7 +2798,7 @@ function briefHtml(c){
   const SECS=[['h','Hook'],['b','Body'],['cl','Close']];
   const seqTable=vi=>{
     const iter=Array.isArray(w['it'+vi])?w['it'+vi]:[];
-    const rows=SECS.filter(([k])=>vi===0||!iter.length||iter.includes(k));
+    const rows=SECS.filter(([k])=>vi===0||iter.includes(k));
     const cell2=(sec,col,ph)=>{const key=`t${vi}${sec}_${col}`;
       if(col!=='v')return `<td>${area(key,w[key],ph)}</td>`;
       const ik=key+'img'; /* Visuals cells take a GIF/image — stored raw so GIFs keep animating here */
@@ -2813,10 +2813,10 @@ function briefHtml(c){
         ${inp('it'+vi+'o',w['it'+vi+'o'],'…or describe what else changes','max-width:260px; flex:0 1 260px')}`
         :`<span class="hint">the full concept — Hook, Body, Close</span>`}
       </div>
-      <table class="wk sqb" style="margin-top:6px"><thead><tr><th style="width:64px">Section</th><th style="width:26%">Visuals</th><th style="width:30%">Copy &amp; Voiceover</th><th style="width:21%">Notes</th><th>Disclaimers</th></tr></thead><tbody>
+      ${rows.length?`<table class="wk sqb" style="margin-top:6px"><thead><tr><th style="width:64px">Section</th><th style="width:26%">Visuals</th><th style="width:30%">Copy &amp; Voiceover</th><th style="width:21%">Notes</th><th>Disclaimers</th></tr></thead><tbody>
       ${rows.map(([k,lb])=>`<tr><td><b>${lb}</b></td>
         ${cell2(k,'v',k==='cl'?PH.visClose:PH.vis)}${cell2(k,'c',k==='cl'?PH.copyClose:PH.copy)}${cell2(k,'n',k==='cl'?PH.notesClose:PH.notes)}${cell2(k,'d',PH.disc)}</tr>`).join('')}
-      </tbody></table></div>`;
+      </tbody></table>`:`<div class="hint" style="margin:6px 0 2px; padding:8px 12px; border:1.5px dashed var(--line2); border-radius:8px">Pick <b>Hook</b>, <b>Body</b> and/or <b>Close</b> above to open this variation’s rows — it only briefs what changes vs the concept.</div>`}</div>`;
   };
 
   return `<div class="brief" id="brief-${c.id}">
@@ -2951,13 +2951,13 @@ function briefTxt(c){
   const SECS=[['h','Hook'],['b','Body'],['cl','Close']];
   const tbl=vi=>{
     const iter=Array.isArray(w['it'+vi])?w['it'+vi]:[];
-    const rows=SECS.filter(([k])=>vi===0||!iter.length||iter.includes(k));
+    const rows=SECS.filter(([k])=>vi===0||iter.includes(k));
     return `VARIATION V${String(vi+1).padStart(2,'0')}${vi&&(iter.length||w['it'+vi+'o'])?` — iterates on: ${[...iter.map(k=>({h:'Hook',b:'Body',cl:'Close'})[k]),w['it'+vi+'o']].filter(Boolean).join(', ')}`:''}
-${rows.map(([k,lb])=>`  ${lb}:
+${rows.length?rows.map(([k,lb])=>`  ${lb}:
     Visuals: ${w[`t${vi}${k}_v`]||'[..]'}${w[`t${vi}${k}_vimg`]?' (image/GIF attached — see the app or the DOC export)':''}
     Copy & VO: ${w[`t${vi}${k}_c`]||'[..]'}
     Notes: ${w[`t${vi}${k}_n`]||'[..]'}
-    Disclaimers: ${w[`t${vi}${k}_d`]||'[..]'}`).join('\n')}`;
+    Disclaimers: ${w[`t${vi}${k}_d`]||'[..]'}`).join('\n'):'  (no sections selected yet — pick Hook/Body/Close in the app)'}`;
   };
   return `${card} — ${B.name}
 ✨ This is an empty brief — fill it with your unique creativity and your spark. Just remember to stick to the test.
