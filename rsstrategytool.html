@@ -2678,10 +2678,17 @@ const BRIEF_MENU=['UGC','Elevated Video','3D Animation','2D Animation','Motion G
 const ROUTE_TO_BRIEF={UGC_A:'UGC',UGC_B:'UGC',UGC_C:'UGC',EDITOR:'UGC',PRIME_UGC:'Elevated Video',CREATOR:'Creator'};
 const briefRoute=r=>ROUTE_TO_BRIEF[r]||r||'';
 const newIterTag=v=>/^it/i.test(v||'')?'ITR':/^new/i.test(v||'')?'NEW':(v||'');
+/* the brief's NEW/ITR pick — override lives in briefWork (w.newI) and syncs the sheet's New/Iteration column */
+const newIterOf=(c,w)=>w.newI!==undefined?w.newI:newIterTag(c.newIter);
+function setNewIter(id,v){
+  B.briefWork=B.briefWork||{};(B.briefWork[id]=B.briefWork[id]||{}).newI=v;
+  if(B.sheet)B.sheet.rows.forEach(r=>{if((r.d+r.c)===id)r.newIter=v==='ITR'?'Iteration':'New';});
+  save(); render();
+}
 function cardName(c,w){
   const parts=[['RS'],[B.code],[c.d,'D###'],[c.c,'C###'],
     [(w.cname!==undefined?w.cname:c.conceptName)||'','ConceptName'],
-    [newIterTag(c.newIter),'NEW/ITR'],[(w.fmt!==undefined?w.fmt:c.format)||'','TYPE']];
+    [newIterOf(c,w),'NEW/ITR'],[(w.fmt!==undefined?w.fmt:c.format)||'','TYPE']];
   return parts.map(p=>p[0]?esc(p[0]):`<span style="color:var(--warn)" title="Missing — fill it here or in the Strategy Sheet">${p[1]}</span>`).join('_');
 }
 function briefVars(c){const w=bw(c.id); return (w.vars!==undefined&&w.vars!=='')?Math.max(1,+w.vars||1):Math.max(1,+c.variants||1);}
@@ -2742,7 +2749,7 @@ function briefDocHtml(c,imgSrc){
   const ctp=personaOf(c.ctp)||L.ctps.find(x=>x.name===c.ctp)||{}; const seg=segOf(c.segment);
   const nV=briefVars(c);
   const cname=(w.cname!==undefined?w.cname:c.conceptName)||'';
-  const cardTxt=['RS',B.code,c.d||'D###',c.c||'C###',cname||'ConceptName',newIterTag(c.newIter)||'NEW/ITR',(w.fmt!==undefined?w.fmt:c.format)||'TYPE'].join('_');
+  const cardTxt=['RS',B.code,c.d||'D###',c.c||'C###',cname||'ConceptName',newIterOf(c,w)||'NEW/ITR',(w.fmt!==undefined?w.fmt:c.format)||'TYPE'].join('_');
   const ck=v=>v?'☑':'☐';
   const kv=(k,v)=>`<tr><td style="width:170px; background:#f2f0fa"><b>${k}</b></td><td>${v||'—'}</td></tr>`;
   const li=a=>a.filter(x=>x[0]).map(x=>`<li><b>${esc(x[0])}</b>${x[1]?` — ${esc(x[1])}`:''}</li>`).join('');
@@ -2912,6 +2919,8 @@ function briefHtml(c){
       <button class="btn tiny no-print" title="Save this selection as ${esc(B.name)}’s default sizes (Process Definition wiring pending — manual for now)" onclick="PD().sizes=(bw('${c.id}').sizes||[]).slice();save();render()">Set as client default</button>`)}
     ${row('QC Check',`<label style="font-size:12.5px; display:inline-flex; align-items:center; gap:5px; cursor:pointer"><input type="checkbox" data-bid="${c.id}" data-cell="qcName" ${w.qcName?'checked':''}> Name matches Naming Conventions</label> · <label style="font-size:12.5px; display:inline-flex; align-items:center; gap:5px; cursor:pointer"><input type="checkbox" data-bid="${c.id}" data-cell="qcDisc" ${w.qcDisc?'checked':''}> Disclaimers checked by QC</label> · <i style="font-size:12px">QC won’t check spelling — every box here has the browser spell-checker on.</i>`)}
     ${row('Variations',`<input type="number" min="1" data-bid="${c.id}" data-cell="vars" value="${nV}" style="width:64px; border:1px solid var(--line2); background:var(--card2); color:var(--ink); border-radius:7px; padding:4px 6px; font:inherit"> <span class="hint">one sequence table per variation below · the saved roadmap flags ⚠ if this diverges from it</span>`)}
+    ${(()=>{const ni=newIterOf(c,w);
+      return row('New / Iteration',`<span class="chips" style="gap:4px"><span class="chip ${ni==='NEW'?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="setNewIter('${c.id}','NEW')">NEW</span><span class="chip ${ni==='ITR'?'sel':''}" style="font-size:11px; padding:3px 8px" onclick="setNewIter('${c.id}','ITR')">ITR</span></span><span class="hint">fills the Card Name and the sheet${ni==='ITR'?' — note the past winner in Creative Info below':''}</span>`);})()}
     ${row('Format',selc('fmt',w.fmt!==undefined?w.fmt:c.format,AD_FORMATS)+`<span class="hint">syncs with the sheet</span>`)}
     ${(()=>{const rv=w.route!==undefined?w.route:briefRoute(c.route);
       return row('Menu Item',selc('route',rv,[...BRIEF_MENU,...(rv&&!BRIEF_MENU.includes(rv)?[rv]:[])],'— not set —')+`<span class="hint">production style${c.route&&briefRoute(c.route)!==rv?` — roadmap route: ${esc(c.route)}`:''}</span>`);})()}
@@ -3035,7 +3044,7 @@ function briefTxt(c){
   const li=a=>a.filter(x=>x[0]).map(x=>`- ${x[0]}${x[1]?` — ${x[1]}`:''}`).join('\n');
   const nV=briefVars(c);
   const cname=(w.cname!==undefined?w.cname:c.conceptName)||'';
-  const card=['RS',B.code,c.d||'D###',c.c||'C###',cname||'ConceptName',newIterTag(c.newIter)||'NEW/ITR',(w.fmt!==undefined?w.fmt:c.format)||'TYPE'].join('_');
+  const card=['RS',B.code,c.d||'D###',c.c||'C###',cname||'ConceptName',newIterOf(c,w)||'NEW/ITR',(w.fmt!==undefined?w.fmt:c.format)||'TYPE'].join('_');
   const SECS=[['h','Hook'],['b','Body'],['cl','Close']];
   const tbl=vi=>{
     const iter=Array.isArray(w['it'+vi])?w['it'+vi]:[];
