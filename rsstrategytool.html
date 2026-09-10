@@ -2915,7 +2915,8 @@ function briefHtml(c){
         ${cs('angle',c.angle,L.angles.map(x=>x.name),'Angle…')}
         ${cs('funnel',c.funnel,['TOFU','MOFU','BOFU'],'Funnel…')}
         ${cs('phase',c.phase,['Explore','Exploit','Amplify'],'Phase…')}
-        ${(segOf(c.segment)&&(segOf(c.segment).casting||[]).length)?cs('talent',c.talent,segOf(c.segment).casting,'Casting…'):''}
+        ${(segOf(c.segment)&&(segOf(c.segment).casting||[]).length)?cs('talent',c.talent,segOf(c.segment).casting,'Casting suggestion…')
+          :`<select disabled title="Casting options come from the chosen segment's Strategy Layer card" style="border:1px solid var(--line2); background:var(--card2); color:var(--ink3); border-radius:7px; font-size:12px; padding:4px 6px"><option>Casting — pick a segment first</option></select>`}
         ${ci('d',c.d,'D###','72px')}${ci('c2',c.c,'C###','72px')}
         ${ci('hypothesis',c.hypothesis,'hypothesis — what is this test trying to learn?','340px')}
       </div>`;})():''}
