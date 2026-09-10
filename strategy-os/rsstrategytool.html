@@ -1744,6 +1744,38 @@ function retagRow(key){
   save(); render();
 }
 function unRetag(key){delete (B.perfRetag||{})[key]; save(); render();}
+/* Una corrida del motor PLS (retroactivo CTP × Angle o M6 dimensión × valor) entra a B.pls por acá, venga del
+   file input (loadPerf) o de un deep link (bootFromUrl). */
+function importPlsRun(d,meta){
+  const s=d._source||{}; const today=new Date().toISOString().slice(0,10);
+  /* obs[] (una fila por ad × mes) pesa 14 MB en la corrida M6 y la shell no lo lee. Si entra en B, save() excede la
+     cuota de localStorage y falla en silencio (lsSet traga el error): la corrida y TODO lo que se guarde después para
+     esa marca se pierden al recargar. Se descarta al importar (smoke test: tests/shell_smoke.py). */
+  const sinObs=a=>a.map(t=>{const {obs,...r}=t; return r;});
+  B.pls={benchmarks:d.benchmarks, tested:sinObs(d.tested), audit:d._audit||null,
+    /* tipo de corrida: 'strategic_learning' (CTP × Angle, la del retroactivo) o 'execution_analysis' (M6: dimensión × valor).
+       Se guardan también los pares y la procedencia completa: antes se descartaban al importar. */
+    run_type:d.run_type||s.run_type||'strategic_learning', pares:Array.isArray(d.pares)?sinObs(d.pares):[], source_full:s,
+    source:{name:meta.name, dates:meta.dates||s.window||'unspecified', loadedAt:today, loadedBy:meta.who||'—', origin:s.origen||s.origin||''}};
+  save(); render();
+}
+/* Deep link (demo / abrir desde el repo): ?brand=GRUB&view=perf&run=/data/grubhub/dimensiones-run.json
+   Solo funciona servido por http (fetch no lee file://). Sin `run`, solo navega. */
+async function bootFromUrl(){
+  let q; try{q=new URLSearchParams(location.search);}catch(e){return;}
+  const brand=q.get('brand'), view=q.get('view'), run=q.get('run');
+  if(!brand&&!view&&!run)return;
+  const code=brand||'GRUB'; if(!BRAND_DEFS.some(b=>b.code===code))return;
+  if(run){
+    try{
+      const r=await fetch(run); const d=await r.json();
+      if(!(d&&Array.isArray(d.tested)&&d.benchmarks))throw new Error('no es una corrida del motor');
+      loadBrand(code); route.brand=code;
+      importPlsRun(d,{name:run.split('/').pop(),who:'deep link',dates:(d._source||{}).window});
+    }catch(e){console.warn('deep link: no se pudo cargar la corrida',e); return;}
+  }
+  go(view||'perf',code);
+}
 async function loadPerf(inp){
   const f=inp.files[0]; if(!f)return; const txt=await f.text(); inp.value='';
   const name=f.name; const today=new Date().toISOString().slice(0,10);
@@ -1756,16 +1788,7 @@ async function loadPerf(inp){
          !confirm(`Esta corrida es de ${d.brand.name||d.brand.code}, y estás parado en ${B.name}. ¿Cargarla igual?`))return;
       const who2=prompt('¿Quién carga esta corrida? (nombre)','')||'—';
       const dates2=prompt('Ventana de datos de la corrida (ej. "Aug 1 – Aug 31, 2026")',s.window||'')||'unspecified';
-      /* obs[] (una fila por ad × mes) pesa 14 MB en la corrida M6 y la shell no lo lee. Si entra en B, save() excede la
-         cuota de localStorage y falla en silencio (lsSet traga el error): la corrida y TODO lo que se guarde después para
-         esa marca se pierden al recargar. Se descarta al importar (smoke test: tests/shell_smoke.py). */
-      const sinObs=a=>a.map(t=>{const {obs,...r}=t; return r;});
-      B.pls={benchmarks:d.benchmarks, tested:sinObs(d.tested), audit:d._audit||null,
-        /* tipo de corrida: 'strategic_learning' (CTP × Angle, la del retroactivo) o 'execution_analysis' (M6: dimensión × valor).
-           Se guardan también los pares y la procedencia completa: antes se descartaban al importar. */
-        run_type:d.run_type||s.run_type||'strategic_learning', pares:Array.isArray(d.pares)?sinObs(d.pares):[], source_full:s,
-        source:{name, dates:dates2, loadedAt:today, loadedBy:who2, origin:s.origen||s.origin||''}};
-      save(); render();
+      importPlsRun(d,{name,who:who2,dates:dates2});
       alert(`✓ Corrida PLS cargada: ${d.tested.length} combinaciones.`);
       return;
     }
@@ -2937,7 +2960,7 @@ function copyAllBriefs(){
 }
 
 /* boot */
-applyTheme(); render();
+applyTheme(); render(); bootFromUrl();
 </script>
 </body>
 </html>
