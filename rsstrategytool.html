@@ -307,11 +307,11 @@ const PERF_BRAND_MONTHS={"OWNU":{"src":"Motion MCP \u2014 workspace OwnUp (org R
 /* raw `p:` values as they appear in production ad names → canonical persona.
    The client types these by hand, so short forms and typos are normalised HERE, never in the layer.
    `sub` is the subscription PRODUCT, not a persona — $1.1M of spend hangs off it (see working doc §4). */
-const PERSONA_AD_TAGS={'deal hunter':'The Deal Hunter','effort minimizer':'The Effort Minimizer',
- 'executive':'The Executive','excecutive':'The Executive','dating':'The Dating Dude','dating dude':'The Dating Dude',
- 'casualist':'The Casualist','perfect fit':'The Perfect Fit Finder','perfect fit finder':'The Perfect Fit Finder',
- 'perfect timing':'Perfect Timing','disruptor':'The Disruptor','family man':'The Family Man',
- 'extended fit':'The Extended Fit'};
+const PERSONA_AD_TAGS={'deal hunter':'Deal Hunter','effort minimizer':'Effort Minimizer',
+ 'executive':'Executive','excecutive':'Executive','dating':'Dating Dude','dating dude':'Dating Dude',
+ 'casualist':'Casualist','perfect fit':'Perfect Fit','perfect fit finder':'Perfect Fit',
+ 'perfect timing':'Perfect Timing','disruptor':'Disruptor','family man':'Family Man',
+ 'extended fit':'Extended Sizing','extended sizing':'Extended Sizing'};
 const NOT_A_PERSONA=['sub','subscription'];
 /* D+C parser (fixed 2026-09-07, flagged by the main chat in the working doc): the convention grew a
    brand code in the middle — `RS_STAT_D034_C118_…` — and the old `RS_D27_C085` regex missed it, so 12
@@ -359,16 +359,16 @@ const SEED_STAT={
  /* CTPs = CLIENT PERSONAS (spec Sep 6: statelysegmentssolucion). The strategist sees the name; the sheet/ad-name gets the tag.
     The 7 old CTPs are retired — legacyCtp/legacyMacro resolve old rows to a persona (suggested, not imposed). */
  ctps:[
-  {id:'deal',name:'The Deal Hunter',tag:'p-deal',insight:'He shops strategically, waiting for the right offer so he feels confident he’s getting real value for his money.',clothingPersona:['Refined','Modern American','Coastal','Rugged'],legacyCtp:[],legacyMacro:[],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
-  {id:'effort',name:'The Effort Minimizer',tag:'p-effort',insight:'He doesn’t enjoy shopping or styling and would rather someone else handle it, as long as the result simply works.',clothingPersona:['Modern American','Rugged'],legacyCtp:['Never Learned Fashion','The Busy Guy','Traveling Travis','City Shmitty','Broad Audience','Busy Dads, Entrepreneur, Corporate Guys'],legacyMacro:['BUSY, OVERLOADED, TIME-STARVED MEN'],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
-  {id:'exec',name:'The Executive',tag:'p-exec',insight:'He’s career-focused and time-starved, wanting to look polished without spending mental energy on what to wear.',clothingPersona:['Refined','Contemporary'],legacyCtp:['The Status Climber','High Status Henry','Businessman Dan','Corporate Guys'],legacyMacro:[],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
-  {id:'dating',name:'The Dating Dude',tag:'p-dating',insight:'He’s stepping up his style and seeking social validation. He wants his wardrobe to match the grown, put-together version of himself he’s becoming.',clothingPersona:['Contemporary','Modern American'],legacyCtp:['The Desirability Seeker','Single Steve'],legacyMacro:['THE “LEVEL-UP” GUY'],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
-  {id:'casual',name:'The Casualist',tag:'p-casual',insight:'He prioritizes comfort, athleisure, and everyday basics, only dressing up when the occasion absolutely requires it.',clothingPersona:['Everyday Active','Rugged','Coastal'],legacyCtp:['Gym-bro Jim'],legacyMacro:['LIFESTYLE & INTEREST-BASED'],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
-  {id:'perfectfit',name:'The Perfect Fit Finder',tag:'p-perfect',tagAliases:['p-perfectf'],insight:'He’s never had clothes that actually fit him well; he loves that the stylist is able to get him clothes and brands that fit him better than any brand before.',clothingPersona:['Modern American','Coastal','Rugged'],legacyCtp:['The Anxious / Self-Conscious'],legacyMacro:['THE INSECURE OR SELF-CONSCIOUS GUY'],val:'Not Tested',src:'⚠ PROPOSED to client (was p-perfect, duplicated)'},
-  {id:'timing',name:'Perfect Timing',tag:'p-timing',tagAliases:['p-perfectt'],insight:'',clothingPersona:[],legacyCtp:[],legacyMacro:[],val:'Not Tested',src:'Client Sep 11: tag confirmed as p-timing (“the timing messaging tag”) — still no description in the PDF'},
-  {id:'disruptor',name:'The Disruptor',tag:'p-disruptor',insight:'He’s drawn to smarter systems and modern solutions, gravitating toward brands that feel innovative and ahead of the curve.',clothingPersona:['Contemporary','Everyday Active'],legacyCtp:[],legacyMacro:[],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
-  {id:'family',name:'The Family Man',tag:'p-family',insight:'He’s balancing work and home life and needs dependable, versatile clothing that keeps up with him without extra thought.',clothingPersona:['Contemporary','Modern American','Coastal'],legacyCtp:['Brad the Dad'],legacyMacro:[],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
-  {id:'extended',name:'The Extended Fit',tag:'p-extended',insight:'He’s experienced frustration with inconsistent sizing and values brands that reliably design for his proportions and make him feel confident in his fit. (Size range “up to 3X tops / 42 waist” is PRODUCT data — it lives in Big & Tall’s notes.)',clothingPersona:['Modern American','Rugged'],legacyCtp:['Big Boy Roy','Weight Changer','Big Boy Roy, Weight Changer, Tiny Tim, Gym-bro Jim, College Colin'],legacyMacro:[],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'}],
+  {id:'deal',name:'Deal Hunter',tag:'p-deal',aliases:['The Deal Hunter'],insight:'He shops strategically, waiting for the right offer so he feels confident he’s getting real value for his money.',clothingPersona:['Refined','Modern American','Coastal','Rugged'],legacyCtp:[],legacyMacro:[],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
+  {id:'effort',name:'Effort Minimizer',tag:'p-effort',aliases:['The Effort Minimizer'],insight:'He doesn’t enjoy shopping or styling and would rather someone else handle it, as long as the result simply works.',clothingPersona:['Modern American','Rugged'],legacyCtp:['Never Learned Fashion','The Busy Guy','Traveling Travis','City Shmitty','Broad Audience','Busy Dads, Entrepreneur, Corporate Guys'],legacyMacro:['BUSY, OVERLOADED, TIME-STARVED MEN'],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
+  {id:'exec',name:'Executive',tag:'p-exec',aliases:['The Executive'],insight:'He’s career-focused and time-starved, wanting to look polished without spending mental energy on what to wear.',clothingPersona:['Refined','Contemporary'],legacyCtp:['The Status Climber','High Status Henry','Businessman Dan','Corporate Guys'],legacyMacro:[],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
+  {id:'dating',name:'Dating Dude',tag:'p-dating',aliases:['The Dating Dude'],insight:'He’s stepping up his style and seeking social validation. He wants his wardrobe to match the grown, put-together version of himself he’s becoming.',clothingPersona:['Contemporary','Modern American'],legacyCtp:['The Desirability Seeker','Single Steve'],legacyMacro:['THE “LEVEL-UP” GUY'],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
+  {id:'casual',name:'Casualist',tag:'p-casual',aliases:['The Casualist'],insight:'He prioritizes comfort, athleisure, and everyday basics, only dressing up when the occasion absolutely requires it.',clothingPersona:['Everyday Active','Rugged','Coastal'],legacyCtp:['Gym-bro Jim'],legacyMacro:['LIFESTYLE & INTEREST-BASED'],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
+  {id:'perfectfit',name:'Perfect Fit',tag:'p-perfect',aliases:['p-perfectf','The Perfect Fit Finder'],insight:'He’s never had clothes that actually fit him well; he loves that the stylist is able to get him clothes and brands that fit him better than any brand before.',clothingPersona:['Modern American','Coastal','Rugged'],legacyCtp:['The Anxious / Self-Conscious'],legacyMacro:['THE INSECURE OR SELF-CONSCIOUS GUY'],val:'Not Tested',src:'Client Sep 11: p-perfect confirmed; name normalised to the client’s own label (Maya’s list)'},
+  {id:'timing',name:'Perfect Timing',tag:'p-timing',aliases:['p-perfectt'],insight:'',clothingPersona:[],legacyCtp:[],legacyMacro:[],val:'Not Tested',src:'Client Sep 11: tag confirmed as p-timing (“the timing messaging tag”) — still no description in the PDF'},
+  {id:'disruptor',name:'Disruptor',tag:'p-disruptor',aliases:['The Disruptor'],insight:'He’s drawn to smarter systems and modern solutions, gravitating toward brands that feel innovative and ahead of the curve.',clothingPersona:['Contemporary','Everyday Active'],legacyCtp:[],legacyMacro:[],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
+  {id:'family',name:'Family Man',tag:'p-family',aliases:['The Family Man'],insight:'He’s balancing work and home life and needs dependable, versatile clothing that keeps up with him without extra thought.',clothingPersona:['Contemporary','Modern American','Coastal'],legacyCtp:['Brad the Dad'],legacyMacro:[],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'},
+  {id:'extended',name:'Extended Sizing',tag:'p-extended',aliases:['The Extended Fit'],insight:'He’s experienced frustration with inconsistent sizing and values brands that reliably design for his proportions and make him feel confident in his fit. (Size range “up to 3X tops / 42 waist” is PRODUCT data — it lives in Big & Tall’s notes.)',clothingPersona:['Modern American','Rugged'],legacyCtp:['Big Boy Roy','Weight Changer','Big Boy Roy, Weight Changer, Tiny Tim, Gym-bro Jim, College Colin'],legacyMacro:[],val:'Not Tested',src:'Client personas PDF (Maya, Apr 8)'}],
  /* SEGMENTS = pure demography/casting (5). Casting[] is the talent menu — no validation of its own, never an axis.
     Promote a casting note to a segment only with a hypothesis that the group reacts differently + a control. */
  segments:[
@@ -867,8 +867,14 @@ function loadBrand(code){
     if(def.seed&&(def.seed.ctps||[]).length&&(B.layer.ctps||[]).length){
       let tagged=false;
       B.layer.ctps.forEach(c=>{
-        const sp=def.seed.ctps.find(x=>x.id&&x.id===c.id);
-        if(sp&&sp.tag&&c.tag!==sp.tag){c.tagAliases=[...new Set([...(c.tagAliases||[]),c.tag])]; c.tag=sp.tag; tagged=true;}
+        const sp=def.seed.ctps.find(x=>x.id&&x.id===c.id); if(!sp)return;
+        /* one `aliases[]` holds every previous identity — retired tags and previous names alike,
+           the same field segments already use. Absorbs tagAliases from the Sep-11 version. */
+        if(c.tagAliases){c.aliases=[...new Set([...(c.aliases||[]),...c.tagAliases])]; delete c.tagAliases; tagged=true;}
+        if(sp.tag&&c.tag!==sp.tag){c.aliases=[...new Set([...(c.aliases||[]),c.tag])]; c.tag=sp.tag; tagged=true;}
+        /* names normalised to the client's own labels (Maya's list) so the sheet dropdown, the ad name
+           and the client all say the same word. The previous name keeps resolving as an alias. */
+        if(sp.name&&c.name!==sp.name){c.aliases=[...new Set([...(c.aliases||[]),c.name])]; c.name=sp.name; tagged=true;}
       });
       const retired=B.layer.ctps.filter(c=>c.id&&!def.seed.ctps.some(x=>x.id===c.id));
       if(retired.length){
@@ -987,7 +993,7 @@ const sheetComplete=()=>!!(B.sheet&&B.sheet.rows.length);
 function personaOf(v){ /* resolve a CTP string (name | tag | retired tag | legacy name) to a persona row */
   if(!v)return null; const C=B.layer.ctps;
   return C.find(c=>c.name===v||c.tag===v)
-       ||C.find(c=>(c.tagAliases||[]).includes(v))   /* p-perfectf → p-perfect: sheets already exported keep joining */
+       ||C.find(c=>(c.aliases||[]).includes(v))      /* retired tag OR previous name — exported sheets keep joining */
        ||C.find(c=>(c.legacyCtp||[]).includes(v))||null;
 }
 function segOf(v){ /* resolve a Segment string (name | alias) to a segment row */
@@ -999,7 +1005,7 @@ function resolveDims(dims,key){ /* → {ctp,segment,angle,funnel,legacy} in the 
   if(!usesTags)return {...dims,legacy:false};
   const rt=(B.perfRetag||{})[key];
   if(rt)return {...dims,ctp:rt.ctp,segment:rt.segment,legacy:false,retagged:true};
-  const direct=B.layer.ctps.find(c=>c.name===dims.ctp||c.tag===dims.ctp||(c.tagAliases||[]).includes(dims.ctp));
+  const direct=B.layer.ctps.find(c=>c.name===dims.ctp||c.tag===dims.ctp||(c.aliases||[]).includes(dims.ctp));
   const seg=segOf(dims.segment);
   if(direct&&(seg||!dims.segment))return {...dims,ctp:direct.name,segment:seg?seg.name:'unassigned',legacy:false};
   /* legacy row: suggest persona via legacyCtp, then legacyMacro as second signal */
