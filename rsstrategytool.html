@@ -2730,7 +2730,7 @@ function printBrief(id){
   const c=conceptList().find(x=>x.id===id);
   const prevTitle=document.title;
   const cname=(B.briefWork?.[id]?.cname!==undefined?B.briefWork[id].cname:c?.conceptName)||'';
-  document.title=c?`${[c.d&&c.c?c.d+' '+c.c:(c.d||c.c),cname].filter(Boolean).join(' ')||'Custom brief'} — ${B.name} Brief`:prevTitle; /* becomes the PDF filename */
+  document.title=c?briefFileName(c,B.briefWork?.[id]||{}):prevTitle; /* becomes the PDF filename — the Card Name */
   el.classList.add('print-target'); document.body.classList.add('print-single');
   window.print();
   document.body.classList.remove('print-single'); el.classList.remove('print-target');
@@ -2768,6 +2768,9 @@ function cardName(c,w){
   return parts.map(p=>p[0]?esc(p[0]):`<span style="color:var(--warn)" title="Missing — fill it here or in the Strategy Sheet">${p[1]}</span>`).join('_');
 }
 function briefVars(c){const w=bw(c.id); return (w.vars!==undefined&&w.vars!=='')?Math.max(1,+w.vars||1):Math.max(1,+c.variants||1);}
+/* plain-text Card Name — every export (PDF title, DOCX, HTML, Copy) is named after it */
+const cardNameTxt=(c,w)=>['RS',B.code,c.d||'D###',c.c||'C###',((w.cname!==undefined?w.cname:c.conceptName)||'ConceptName'),newIterOf(c,w)||'NEW-ITR',(w.fmt!==undefined?w.fmt:c.format)||'TYPE'].join('_');
+const briefFileName=(c,w)=>cardNameTxt(c,w).replace(/[\/\\:]/g,'-');
 /* brief dates read MM-DD-YY; YYYY-MM-DD (the sheet's usual shape) and slash dates are converted, anything else passes through */
 function fmtDateMDY(v){
   if(!v)return v; const s=String(v).trim();
@@ -2803,6 +2806,48 @@ function ingestCellImg(bid,key){
    natively and ignores data: URIs, so every image travels as its own MIME part. QC edits it directly.
    (Word shows a GIF's first frame; full animation plays in the app or any browser.) */
 function exportBriefDoc(id){exportBriefDocx(id);} /* button entry point */
+/* ── export one brief as a standalone .html — the app's exact look, GIFs ANIMATE (it opens in a
+   browser), the S4 sequence-table cells stay editable, and the file carries its own PDF/Save
+   buttons. This is also the future payload of the shareable link. ── */
+function exportBriefHtml(id){
+  const c=conceptList().find(x=>x.id===id); if(!c)return;
+  const w=bw(id);
+  const el=document.getElementById('brief-'+id);
+  if(!el){alert('Open the brief on screen first, then export.');return;}
+  const node=el.cloneNode(true);
+  node.querySelectorAll('.no-print').forEach(x=>x.remove());
+  node.querySelectorAll('[onclick]').forEach(x=>x.removeAttribute('onclick'));
+  /* freeze the app's controls into plain values */
+  node.querySelectorAll('select').forEach(s=>{const t=(s.options[s.selectedIndex]||{}).text||''; const b=document.createElement('b'); b.textContent=(t&&t!=='choose…'&&!/^—/.test(t))?t:'—'; s.replaceWith(b);});
+  node.querySelectorAll('input[type=checkbox]').forEach(i=>{const b=document.createElement('span'); b.textContent=i.checked?'☑':'☐'; i.replaceWith(b);});
+  node.querySelectorAll('input').forEach(i=>{const b=document.createElement('span'); b.style.fontWeight='600'; b.textContent=i.value||'—'; i.replaceWith(b);});
+  node.querySelectorAll('.chips .chip:not(.sel)').forEach(x=>x.remove()); /* only the chosen chips travel */
+  node.querySelectorAll('.chips').forEach(x=>{if(!x.children.length)x.textContent='—';}); /* unanswered chip rows read as a dash */
+  /* everything locks except the sequence-table cells — the editor works there */
+  node.querySelectorAll('[contenteditable]').forEach(x=>{if(!x.closest('table.sqb'))x.removeAttribute('contenteditable');});
+  const css=document.querySelector('style').textContent;
+  const cardTxt=cardNameTxt(c,w);
+  const html=`<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${esc(cardTxt)}</title><style>${css}
+/* share-file wrapper */
+body{background:var(--bg); padding:26px 18px 60px; margin:0;}
+.brief{max-width:1040px; margin:0 auto;}
+.sharebar{max-width:1040px; margin:0 auto 14px; display:flex; gap:10px; align-items:center; flex-wrap:wrap; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 14px; font-size:12.5px; color:var(--ink2);}
+.sharebar b{color:var(--ink); font-family:ui-monospace,monospace; font-size:12px;}
+.sharebar button{border:1px solid var(--line2); background:var(--card2); color:var(--ink); border-radius:8px; padding:6px 12px; font:inherit; font-weight:700; cursor:pointer;}
+@media print{.sharebar{display:none}}
+</style></head><body>
+<div class="sharebar"><b>${esc(cardTxt)}</b><span>· shared from Strategy OS — the storyboard cells (section 4) are editable; everything else is locked</span>
+<span style="margin-left:auto; display:flex; gap:8px">
+<button onclick="window.print()">🖨 Save as PDF</button>
+<button onclick="(function(){const b=new Blob(['<!DOCTYPE html>'+document.documentElement.outerHTML],{type:'text/html'});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=document.title+' (edited).html';a.click();setTimeout(()=>URL.revokeObjectURL(a.href),4000);})()">💾 Save edited copy</button>
+</span></div>
+${node.outerHTML}
+</body></html>`;
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(new Blob([html],{type:'text/html'}));
+  a.download=briefFileName(c,w)+'.html';
+  a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
+}
 /* ── export one brief as a REAL .docx (a ZIP of OOXML parts, built by hand — no libraries).
    The previous MHTML-as-.doc trick opened in Word but Google Drive/Docs refused it; a genuine
    .docx opens in both. Images are embedded as media parts (a GIF shows its first frame in
@@ -2860,7 +2905,7 @@ async function exportBriefDocx(id){
   const ctp=personaOf(c.ctp)||L.ctps.find(x=>x.name===c.ctp)||{}; const seg=segOf(c.segment);
   const nV=briefVars(c);
   const cname=(w.cname!==undefined?w.cname:c.conceptName)||'';
-  const cardTxt=['RS',B.code,c.d||'D###',c.c||'C###',cname||'ConceptName',newIterOf(c,w)||'NEW/ITR',(w.fmt!==undefined?w.fmt:c.format)||'TYPE'].join('_');
+  const cardTxt=cardNameTxt(c,w);
 
   /* gather every embedded image first (async), assign relationship ids */
   const media=[]; /* {rid, name, bytes, ext, w, h} */
@@ -2975,7 +3020,7 @@ async function exportBriefDocx(id){
     ...media.map(m=>({name:'word/media/'+m.name,data:m.bytes}))
   ]);
   const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
-  a.download=`${[c.d&&c.c?c.d+' '+c.c:(c.d||c.c),cname].filter(Boolean).join(' ')||'Custom brief'} — ${B.name} Brief.docx`;
+  a.download=briefFileName(c,w)+'.docx';
   a.click(); setTimeout(()=>URL.revokeObjectURL(a.href),4000);
 }
 function deleteRoadmap(){
@@ -3052,6 +3097,7 @@ function briefHtml(c){
     <div class="spark" style="display:flex; align-items:center; gap:10px">✨ This is an empty brief — fill it with your unique creativity and your spark. Just remember to stick to the test.
       <span style="margin-left:auto; display:flex; gap:6px" class="no-print">
         <button class="btn tiny" onclick="copyOneBrief('${c.id}')">📋 Copy</button>
+        <button class="btn tiny" onclick="exportBriefHtml('${c.id}')" title="Standalone web file — the brief's exact look, GIFs animate, storyboard cells editable; open with a double click">🌐 Export HTML</button>
         <button class="btn tiny" onclick="exportBriefDoc('${c.id}')" title="Real .docx — opens in Word AND Google Docs, editable; images travel inside it">📄 Export DOCX</button>
         <button class="btn tiny" onclick="printBrief('${c.id}')">🖨 Export PDF</button>
         <button class="btn tiny" onclick="clearBrief('${c.id}')" title="Wipe everything filled in this brief — it stays here, empty and ready to reuse">🧹 Clear</button>
@@ -3196,7 +3242,7 @@ function briefTxt(c){
   const li=a=>a.filter(x=>x[0]).map(x=>`- ${x[0]}${x[1]?` — ${x[1]}`:''}`).join('\n');
   const nV=briefVars(c);
   const cname=(w.cname!==undefined?w.cname:c.conceptName)||'';
-  const card=['RS',B.code,c.d||'D###',c.c||'C###',cname||'ConceptName',newIterOf(c,w)||'NEW/ITR',(w.fmt!==undefined?w.fmt:c.format)||'TYPE'].join('_');
+  const card=cardNameTxt(c,w);
   const SECS=[['h','Hook'],['b','Body'],['cl','Close']];
   const tbl=vi=>{
     const iter=Array.isArray(w['it'+vi])?w['it'+vi]:[];
