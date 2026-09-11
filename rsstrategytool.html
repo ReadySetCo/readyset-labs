@@ -772,6 +772,44 @@ const SEED_SQRS={
   {name:'Worth It Versus a Designer',val:'',src:'Tier 4 \u2014 audience-specific'}],
  cds:{feel:['','',''],never:['','',''],custom:''}
 };
+/* ══ Seed ingested 2026-09-11: Brigit from Clients/Brigit/Brigit - Database.xlsx, sheet 'Strategy Layer.'
+   (the refined one — the dot-less sheet is the empty template). Ops sheets (KPI, CDS, casting, media
+   accounts) are all GAP in the source, so kpi/cds start empty. Diffs 2-3 in the source FAIL the
+   competitor test and are excluded; diff 1 is kept with its PARTIAL flag. ══ */
+const SEED_BRGT={
+ product:{name:'Instant Cash (cash advances) — flagship of a 3-product suite: Instant Cash, Credit Builder, Finance Helper',brand:'Brigit',
+  description:'Brigit is a personal-finance app that gives you a small cash advance ($25–$500, average ~$73) before payday with no credit check, then offers add-on tools: a Credit Builder, credit & identity monitoring, overdraft prediction, and budgeting. You pay an $8.99–$15.99/month membership; an optional express-transfer fee applies if you want the cash in minutes.',
+  category:'Consumer fintech — cash-advance / financial-wellness app (vs Dave, EarnIn, MoneyLion, Empower, Cleo, Albert, Klover, Chime, Possible, FloatMe, Beem)',
+  kpi:''},
+ valueProps:[
+  ['Fast small-dollar cash before payday with no credit check','“super helpful when I’ve needed a little extra cushion before payday” (App Store)'],
+  ['No credit check, no interest, no late fees','stated repeatedly — note this is category-standard language'],
+  ['Scale + third-party proof against the category’s #1 barrier (trust)','12.2M members · 4.7★ / 562k reviews · FDIC pass-through via Coastal Community Bank · $1M identity-theft coverage · the FTC settlement is publicly documented — a radical-transparency proof point if owned']],
+ diffs:[
+  ['Prevention + relief loop: overdraft PREDICTION tied to an instant advance in the same app','PARTIAL — stronger than advance-only rivals, but Chime SpotMe / Dave also play in overdraft. (“No credit check / no fees” and “up to $500” FAIL the competitor test — excluded.)']],
+ ctps:[
+  {name:'The Burned Switcher',insight:'You’ve already tried Dave, EarnIn, maybe Cleo — and you’ve been burned: a membership fee the day before payday tipped you into a $34 overdraft on top of the $9.99. You’ve read the threads, you know about the FTC, so your first thought isn’t “great, cash” — it’s “okay, what’s the catch.” What you want is to stop feeling like the fine print is hunting you: exactly what you’ll pay, exactly when it hits, and a 60-second cancel — show that and you’ll trust the cash; hide it and you’ll screenshot it for the next thread.',val:'Not Tested',src:'Brigit Database — refined from “Fee-and-Friction Tripwires”'},
+  {name:'The Anxious Bridger',insight:'You don’t need a financial makeover — you need to make it to Friday. It’s not $5,000 you’re short, it’s $80, but $80 at the wrong moment is the difference between a normal week and an overdraft cascade. What you dread isn’t borrowing, it’s the surprise — the fee that lands the day before payday, the repayment pulled at 9am when you get paid at 4:45 — and you definitely don’t want a lecture: just a quiet, fast, judgment-free cushion that takes back exactly what it said, exactly when you expected.',val:'Not Tested',src:'Brigit Database — refined from “Before-Payday Cushion Hunters”'}],
+ segments:[
+  {name:'Refund-Era Researchers',age:'25-44',gender:'',beh:'have NOT signed up yet; actively Google “Brigit legit or scam”, read Reddit/YouTube/NerdWallet and the FTC refund pages before linking a bank — high trust threshold',val:'Not Tested',src:'Brigit Database — CTP: The Burned Switcher'},
+  {name:'Multi-App Fee Resenters',age:'20-38',gender:'',beh:'run 2-3 advance apps at once, know category pricing cold, and resent paying $9.99 in months they don’t borrow — churn fast, respond to side-by-side clarity',val:'Not Tested',src:'Brigit Database — CTP: The Burned Switcher'},
+  {name:'Trust-Broken Lapsed Users',age:'24-50',gender:'',beh:'previously used Brigit, then hit a surprise charge, an overdraft or a cancellation wall — need intact, trust broken; reactivatable with proof and a clean fee/cancel story',val:'Not Tested',src:'Brigit Database — CTP: The Burned Switcher'},
+  {name:'Paycheck-Gap Essentials Coverers',age:'22-34',gender:'',beh:'need $25–$200 for gas, groceries and bills in the days before payday; value speed and simplicity, pick whichever app is fastest and least shameful',val:'Not Tested',src:'Brigit Database — CTP: The Anxious Bridger'},
+  {name:'Overdraft-Dodging Low-Buffer',age:'25-45',gender:'',beh:'watch their balance obsessively and dread the $34 overdraft fee; want predictive alerts plus a fast top-up so a mistimed debit never cascades',val:'Not Tested',src:'Brigit Database — CTP: The Anxious Bridger'},
+  {name:'Irregular-Income Earners',age:'21-39',gender:'',beh:'gig/variable deposits (Instacart, Uber, shift work); need qualification and repayment aligned to when cash actually lands, not a fixed payroll date',val:'Not Tested',src:'Brigit Database — CTP: The Anxious Bridger'}],
+ angles:[
+  {name:'Legit or Loan-Trap',val:'Not Tested',src:'“Is it legit or a scam?” stalls signup — white space HIGH: Brigit’s own ads never say the quiet part out loud'},
+  {name:'Painfully Clear Pricing',val:'Not Tested',src:'the $8.99–$15.99 fee is objection #2; plain-English “exactly what you pay and when” converts the fee-anxious'},
+  {name:'Cancel in 60 Seconds',val:'Not Tested',src:'cancellation friction is the core of the FTC action — showing the exit upfront removes the trap fear'},
+  {name:'The Receipts',val:'Not Tested',src:'proof, not promises: 12.2M members, $2B saved, 4.7★/562k — and explaining the FTC settlement rather than hiding it'},
+  {name:'Value Defense',val:'Not Tested',src:'reframe the $9.99 against the $34 overdraft it prevents — answers “all they do is take take take”'},
+  {name:'Breathing Room, Not a Lecture',val:'Not Tested',src:'shame is the barrier; judgment-free tone is the unlock (“I didn’t need a lecture, I needed breathing room”)'},
+  {name:'Paid at 4:45, Debited at 9am',val:'Not Tested',src:'repayment timing is a vivid injustice — naming it earns instant “they get me” recognition'},
+  {name:'Make It to Friday',val:'Not Tested',src:'the buyer’s real goal is small; white space HIGH: brand creative oversells “get $500”'},
+  {name:'One Surprise Charge',val:'Not Tested',src:'overdraft dread is constant low-grade stress — prediction + instant top-up is the prevention-then-relief loop'},
+  {name:'Cushion Before Payday',val:'Not Tested',src:'the core literal use case — white space LOW: this is already Brigit’s #1 ad message'}],
+ cds:{feel:['','',''],never:['','',''],custom:''}
+};
 const BRAND_DEFS=[
  {code:'STAT',name:'Stately',sub:'Men\u2019s styling subscription',seed:SEED_STAT,perf:true},
  {code:'BNKR',name:'Bankrate',sub:'Awaiting ingestion',seed:null,perf:false},
@@ -784,13 +822,18 @@ const BRAND_DEFS=[
  {code:'RNST',name:'Earnest',sub:'Student loan refinancing',seed:SEED_RNST,perf:false},
  {code:'HHPS',name:'Hers Mental Health',sub:'Women\u2019s telehealth mental health',seed:SEED_HHPS,perf:false},
  {code:'SRKO',name:'Serko',sub:'Awaiting ingestion',seed:null,perf:false},
- {code:'SQRS',name:'Squarespace',sub:'Website builder \u2014 AEO content engagement',seed:SEED_SQRS,perf:false}];
+ {code:'SQRS',name:'Squarespace',sub:'Website builder \u2014 AEO content engagement',seed:SEED_SQRS,perf:false},
+ {code:'BRGT',name:'Brigit',sub:'Cash advance + credit-builder app',seed:SEED_BRGT,perf:false},
+ {code:'DDDX',name:'DoorDash Dasher',sub:'Awaiting ingestion',seed:null,perf:false},
+ {code:'WACO',name:'Wild Alaskan Company',sub:'Awaiting ingestion',seed:null,perf:false},
+ {code:'SELF',name:'Self Inc',sub:'Awaiting ingestion',seed:null,perf:false}];
 /* Strategists \u2014 each sees only their brands. Brand state is shared by CODE (e.g. OWNU is the same brand for Alex & Evan). */
 const STRATEGISTS=[
  {name:'Alex',brands:['HEHA','SESA','OWNU','GRUB','MCTW']},
  {name:'Evan',brands:['STAT','OWNU','BNKR']},
  {name:'Sophia',brands:['HEHA','RNST','GLDN','HHPS','SRKO','SQRS']},
- {name:'Eduardo',brands:['GLDN','RNST','GRUB','BNKR']}];
+ {name:'Eduardo',brands:['GLDN','RNST','GRUB','BNKR']},
+ {name:'Juan',brands:['BRGT','DDDX','WACO','SELF']}];
 
 /* ══════════ state ══════════ */
 const lsGet=k=>{try{return localStorage.getItem(k);}catch(e){return null;}};
