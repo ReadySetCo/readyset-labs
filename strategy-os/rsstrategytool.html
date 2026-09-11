@@ -2771,6 +2771,14 @@ function briefVars(c){const w=bw(c.id); return (w.vars!==undefined&&w.vars!=='')
 /* plain-text Card Name — every export (PDF title, DOCX, HTML, Copy) is named after it */
 const cardNameTxt=(c,w)=>['RS',B.code,c.d||'D###',c.c||'C###',((w.cname!==undefined?w.cname:c.conceptName)||'ConceptName'),newIterOf(c,w)||'NEW-ITR',(w.fmt!==undefined?w.fmt:c.format)||'TYPE'].join('_');
 const briefFileName=(c,w)=>cardNameTxt(c,w).replace(/[\/\\:]/g,'-');
+/* revision rounds per production type (Felipe, Sep 11) — shown under the spark banner and in every export */
+const REVISIONS=[
+ {n:'Ad editing',r:'1 round'},
+ {n:'Designs',r:'1 round'},
+ {n:'Simple animations',r:'2 rounds',link:'https://scope.readyset.co/review/PRQIqzdh'},
+ {n:'Complex animations',r:'3 rounds',link:'https://scope.readyset.co/review/Mb4AWcmp'},
+ {n:'Full AI ad',r:'2 rounds (1 for character-voice · 1 for edition)'}];
+const revisionsTxt=()=>REVISIONS.map(x=>`${x.n}: ${x.r}${x.link?` (${x.link})`:''}`).join(' · ');
 /* brief dates read MM-DD-YY; YYYY-MM-DD (the sheet's usual shape) and slash dates are converted, anything else passes through */
 function fmtDateMDY(v){
   if(!v)return v; const s=String(v).trim();
@@ -2961,7 +2969,8 @@ async function exportBriefDocx(id){
 
   const body=
     PARA(RUN(`${cardTxt} — ${B.name}`,{b:1,sz:30}),{after:160})+
-    PARA(RUN('✨ This is an empty brief — fill it with your unique creativity and your spark. Just remember to stick to the test.',{i:1}),{fill:'F2EAFF',after:200})+
+    PARA(RUN('✨ This is an empty brief — fill it with your unique creativity and your spark. Just remember to stick to the test.',{i:1}),{fill:'F2EAFF',after:120})+
+    PARA(RUN('# OF REVISIONS — ',{b:1,sz:19})+RUN(revisionsTxt(),{sz:19,color:'666666'}),{fill:'F6F7F9',after:200})+
     H2('1 · Main information')+
     KV([
       ['Client',`${B.name} (${B.code})`],['Card Name',cardTxt],['Concept Title',cname],
@@ -3105,6 +3114,10 @@ function briefHtml(c){
         :`<button class="btn tiny" onclick="deleteBrief('${c.id}')" title="Delete: wipe the content and keep this concept OUT of the generate list (restorable)">🗑 Delete</button>
         <button class="btn tiny" onclick="ungenBrief('${c.id}')" title="Remove from generated list (its content is kept; it reappears in the picker)">✕</button>`}
       </span></div>
+    <div style="display:flex; gap:6px 22px; flex-wrap:wrap; align-items:baseline; background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:9px 14px; margin-bottom:14px; font-size:12.5px">
+      <b style="font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink3); flex:none"># of revisions</b>
+      ${REVISIONS.map(x=>`<span style="white-space:nowrap"><b>${x.link?`<a href="${x.link}" target="_blank" style="color:var(--accent); text-decoration-style:dotted">${x.n}</a>`:x.n}:</b> ${x.r}</span>`).join('')}
+    </div>
 
     ${secH('1 · Main information')}
     ${row('Client',`<span>${esc(B.name)} <span class="hint">(${esc(B.code)})</span></span>`)}
@@ -3256,6 +3269,7 @@ ${rows.length?rows.map(([k,lb])=>`  ${lb}:
   };
   return `${card} — ${B.name}
 ✨ This is an empty brief — fill it with your unique creativity and your spark. Just remember to stick to the test.
+# OF REVISIONS — ${revisionsTxt()}
 
 1 · MAIN INFORMATION
 Client: ${B.name} (${B.code}) · Concept: ${cname||'[title]'} · Date submitted: ${fmtDateMDY(w.dateSub!==undefined?w.dateSub:(c.briefDue||''))||'[date]'} · Written by: ${w.owner!==undefined?w.owner:(c.owner||'[owner]')}
