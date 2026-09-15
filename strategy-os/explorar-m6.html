@@ -1,0 +1,927 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Ad Library · history &amp; results</title>
+<!--
+  Ad Library Explorer (M6, prototipo 15-sep-2026). Un solo archivo, sin librerías. Carga SOLO el índice
+  (data/<marca>/explorar-index.json, lo arma bridge/dimensiones/indice_explorar.py) y las fichas
+  (data/<marca>/fichas-dimensiones.json). La media se sirve desde bridge/raw/media/ (gitignored) con
+  `py -m http.server 8765 --bind 127.0.0.1` corrido en la RAÍZ del repo → http://127.0.0.1:8765/app/explorar-m6.html
+  Diseño: docs/m6-performance-para-creativos.md (vista 1) + docs/astra-performance-creativos.md (§1–§5: sin effect ni
+  soporte en las cards, franja de CPA por mes en vez de best & worst, comparar dos anuncios como primario, referencia
+  para el brief). El estado vive en la URL (query string); las referencias guardadas, en localStorage.
+  UI en inglés (los creativos de Ready Set trabajan en inglés); los datos (evidencia, fichas) vienen como están.
+-->
+<style>
+:root{
+  color-scheme: light dark;
+  --bg:#f5f5f7; --card:#fff; --card2:#f6f7f9; --line:#e3e6eb; --line2:#d0d5dd;
+  --ink:#1d1d1f; --ink2:#55575c; --ink3:#8a8f98;
+  --accent:#8a63d2; --accent-soft:#f1ecfa;
+  --warn:#b58900; --warn-soft:#fdf6dd; --bad:#d64545; --bad-soft:#fdeaea; --good:#0a7d33; --good-soft:#e7f5ec;
+  --shadow:0 1px 2px rgba(0,0,0,.05),0 8px 24px rgba(0,0,0,.06); --r:12px;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#101114; --card:#1b1d22; --card2:#22252b; --line:#2c2f36; --line2:#3a3e47;
+    --ink:#f2f3f5; --ink2:#b6bac2; --ink3:#7b808a;
+    --accent:#a78fe0; --accent-soft:#292040;
+    --warn:#d9b216; --warn-soft:#2b2510; --bad:#e46a6a; --bad-soft:#331a1a; --good:#4bc07a; --good-soft:#15281c;
+    --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  }
+}
+*{box-sizing:border-box; margin:0; padding:0;}
+[hidden]{display:none !important;}
+html,body{height:100%;}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif; background:var(--bg); color:var(--ink); font-size:14px; line-height:1.45;}
+button,input,select,textarea{font:inherit; color:inherit;}
+code{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:.92em; color:var(--ink2);}
+a{color:var(--accent);}
+.muted{color:var(--ink3);}
+.small{font-size:12px;}
+abbr[title],[data-tip]{text-decoration:underline dotted; text-decoration-color:var(--ink3); cursor:help;}
+
+/* ── top bar ─────────────────────────────────────────── */
+.topbar{position:sticky; top:0; z-index:40; display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:8px 18px; background:var(--card); border-bottom:1px solid var(--line);}
+.topbar h1{font-size:16px; font-weight:800; letter-spacing:-.01em; white-space:nowrap;}
+.topbar h1 span{font-weight:500; color:var(--ink3);}
+.tabs{display:flex; gap:2px; background:var(--card2); border:1px solid var(--line); border-radius:10px; padding:2px;}
+.tabs button{padding:5px 12px; border:0; border-radius:8px; background:transparent; cursor:pointer; font-weight:600; color:var(--ink2);}
+.tabs button.on{background:var(--card); color:var(--ink); box-shadow:var(--shadow);}
+.search{flex:1; min-width:220px; display:flex; align-items:center; gap:6px;}
+.search input{flex:1; padding:6px 10px; border:1px solid var(--line2); border-radius:8px; background:var(--card2);}
+.btn{padding:6px 12px; border:1px solid var(--line2); border-radius:8px; background:var(--card2); cursor:pointer; font-size:13px; font-weight:600;}
+.btn:hover{border-color:var(--accent);}
+.btn.primary{background:var(--accent); border-color:var(--accent); color:#fff;}
+.btn.sm{padding:3px 8px; font-size:12px;}
+.btn:disabled{opacity:.45; cursor:not-allowed;}
+.toggle{display:flex; align-items:center; gap:6px; font-size:12.5px; color:var(--ink2); cursor:pointer; white-space:nowrap;}
+.toggle input{accent-color:var(--accent);}
+.scope{width:100%; font-size:12px; color:var(--ink3);}
+.scope b{color:var(--ink2); font-weight:600;}
+
+/* ── banner ──────────────────────────────────────────── */
+.banner{margin:12px 18px 0; border-radius:var(--r); padding:9px 14px; border:1px solid var(--warn); background:var(--warn-soft); font-size:12.5px; display:flex; gap:10px; align-items:baseline; flex-wrap:wrap;}
+.banner b{font-weight:700;}
+.banner details{display:inline;}
+.banner summary{display:inline; cursor:pointer; color:var(--accent); font-weight:600;}
+.banner dl{margin-top:8px; display:grid; grid-template-columns:max-content 1fr; gap:3px 12px; font-size:12px; color:var(--ink2);}
+.banner dt{font-weight:700; color:var(--ink);}
+.banner.err{border-color:var(--bad); background:var(--bad-soft);}
+
+/* ── layout ──────────────────────────────────────────── */
+.layout{display:grid; grid-template-columns:290px 1fr; gap:16px; padding:12px 18px 60px; align-items:start;}
+@media (max-width:900px){ .layout{grid-template-columns:1fr;} }
+.card{background:var(--card); border:1px solid var(--line); border-radius:var(--r); box-shadow:var(--shadow);}
+aside.filters{position:sticky; top:58px; max-height:calc(100vh - 70px); overflow:auto; padding:10px 12px;}
+aside h2{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink3); margin:10px 0 4px;}
+aside .sideHead{display:flex; align-items:center; justify-content:space-between; gap:8px;}
+aside .editing{font-size:12px; padding:4px 8px; border-radius:8px; background:var(--accent-soft); color:var(--accent); font-weight:700;}
+details.dim{border-top:1px solid var(--line); padding:5px 0;}
+details.dim > summary{cursor:pointer; list-style:none; display:flex; align-items:center; gap:6px; font-weight:600; font-size:13px; padding:3px 0;}
+details.dim > summary::-webkit-details-marker{display:none;}
+details.dim > summary .caret{color:var(--ink3); font-size:11px; width:10px;}
+details.dim[open] > summary .caret{transform:rotate(90deg);}
+details.dim > summary .n{margin-left:auto; font-size:11px; font-weight:700; color:#fff; background:var(--accent); border-radius:999px; padding:0 7px;}
+details.dim > summary .n:empty{display:none;}
+details.dim .about{font-size:12px; color:var(--ink2); margin:2px 0 6px 16px;}
+details.dim .about .eq{color:var(--ink3);}
+.vals{display:grid; gap:1px; margin-left:4px;}
+.vals label{display:flex; align-items:center; gap:7px; padding:3px 6px; border-radius:6px; cursor:pointer; font-size:12.5px;}
+.vals label:hover{background:var(--card2);}
+.vals label input{accent-color:var(--accent);}
+.vals label .c{margin-left:auto; font-size:11px; color:var(--ink3); font-variant-numeric:tabular-nums;}
+.vals label.zero{color:var(--ink3);}
+.vals label.zero .c{opacity:.6;}
+details.more > summary{cursor:pointer; font-weight:700; padding:8px 0 4px; color:var(--accent);}
+details.more h2{margin-top:6px;}
+
+main{min-width:0;}
+.toolbar{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
+.toolbar select{padding:5px 8px; border:1px solid var(--line2); border-radius:8px; background:var(--card2);}
+.chips{display:flex; gap:6px; flex-wrap:wrap; align-items:center;}
+.chip{display:inline-flex; align-items:center; gap:5px; padding:2px 8px; border-radius:999px; background:var(--accent-soft); color:var(--accent); font-size:12px; font-weight:600; border:1px solid transparent;}
+.chip.ctx{background:var(--card2); color:var(--ink2); border-color:var(--line);}
+.chip button{border:0; background:transparent; color:inherit; cursor:pointer; font-size:13px; line-height:1; padding:0;}
+.chip.q{background:var(--card2); color:var(--ink);}
+.summary{font-size:12.5px; color:var(--ink2); margin:0 0 10px; display:flex; gap:12px; flex-wrap:wrap; align-items:baseline;}
+.summary b{color:var(--ink); font-variant-numeric:tabular-nums;}
+.summary .warn{color:var(--warn); font-weight:600;}
+
+/* ── know panel ──────────────────────────────────────── */
+.know{padding:10px 14px; margin-bottom:12px; border-left:4px solid var(--accent);}
+.know h3{font-size:13px; margin-bottom:3px;}
+.know h3 span{font-weight:500; color:var(--ink3);}
+.know p{font-size:12.5px; color:var(--ink2);}
+.know .facts{font-size:12px; color:var(--ink3); margin-top:4px;}
+.know .lim{font-size:12px; color:var(--warn); margin-top:4px;}
+.know .def{font-size:12px; color:var(--ink2); margin-top:4px;}
+
+/* ── gallery ─────────────────────────────────────────── */
+.grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(228px,1fr)); gap:12px;}
+.ad{display:flex; flex-direction:column; overflow:hidden; cursor:pointer; transition:transform .08s;}
+.ad:hover{transform:translateY(-1px); border-color:var(--accent);}
+.ad .thumb{position:relative; background:#111; height:210px; display:flex; align-items:center; justify-content:center;}
+.ad .thumb img{max-width:100%; max-height:100%; object-fit:contain; display:block;}
+.ad .thumb .play{position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); width:42px; height:42px; border-radius:999px; background:rgba(0,0,0,.55); color:#fff; display:flex; align-items:center; justify-content:center; font-size:18px; pointer-events:none;}
+.ad .thumb .tag{position:absolute; left:6px; bottom:6px; font-size:11px; padding:1px 6px; border-radius:6px; background:rgba(0,0,0,.6); color:#fff;}
+.ad .thumb .tag.r{left:auto; right:6px;}
+.ad .thumb .tag.warnt{background:rgba(181,137,0,.9);}
+.ad .body{padding:8px 10px 6px; display:grid; gap:5px;}
+.ad .copy{font-size:12.5px; line-height:1.35; max-height:2.7em; overflow:hidden; color:var(--ink);}
+.ad .copy.empty{color:var(--ink3); font-style:italic;}
+.ad .lbls{display:flex; gap:4px; flex-wrap:wrap;}
+.ad .lbls span{font-size:11px; padding:1px 7px; border-radius:999px; background:var(--card2); border:1px solid var(--line); color:var(--ink2); white-space:nowrap; max-width:100%; overflow:hidden; text-overflow:ellipsis;}
+.ad .res{font-size:12.5px; font-variant-numeric:tabular-nums;}
+.ad .res b{font-weight:700;}
+.ad .res.low{color:var(--ink3);}
+.ad .res .vs{color:var(--ink3);}
+.ad .ctxl{font-size:11.5px; color:var(--ink3); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;}
+.ad .ctxl .aw{color:var(--warn);}
+.ad .foot{display:flex; gap:6px; padding:0 10px 8px; margin-top:auto;}
+.ad .foot .btn{flex:1; text-align:center;}
+.ad .foot .btn.picked{background:var(--accent-soft); border-color:var(--accent); color:var(--accent);}
+.ad .match{font-size:11px; color:var(--accent); font-weight:600;}
+body.hide .res, body.hide .resd, body.hide .hideable{visibility:hidden !important;}
+.empty{padding:30px; text-align:center; color:var(--ink3);}
+
+/* ── distribution ────────────────────────────────────── */
+.dist{padding:14px 16px;}
+.dist .head{display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;}
+.dist svg{width:100%; height:auto; display:block; overflow:visible;}
+svg.strip{width:100%; height:auto; display:block; overflow:visible; margin-top:6px;}
+.dist .dot,.strip .dot{cursor:pointer; fill:var(--accent); fill-opacity:.75; stroke:var(--card); stroke-width:1;}
+.dist .dot:hover,.strip .dot:hover{fill-opacity:1; stroke:var(--ink);}
+.dist .dot.zero{fill:var(--ink3);}
+.dist .axis,.strip .axis{stroke:var(--line2);}
+.dist .tick,.strip .tick{font-size:11px; fill:var(--ink3);}
+.dist .bench{stroke:var(--bad); stroke-width:1.5; stroke-dasharray:4 3;}
+.dist .benchl{font-size:11.5px; fill:var(--bad); font-weight:700;}
+.dist .bandl{font-size:11.5px; fill:var(--ink2); font-weight:700;}
+.dist .note{font-size:12px; color:var(--ink3); margin-top:6px;}
+.tip{position:fixed; z-index:60; pointer-events:none; background:var(--card); border:1px solid var(--line2); border-radius:10px; box-shadow:var(--shadow); padding:6px; width:200px; font-size:12px;}
+.tip img{width:100%; height:120px; object-fit:contain; background:#111; border-radius:6px; display:block; margin-bottom:5px;}
+
+/* ── compare ─────────────────────────────────────────── */
+.cmp{padding:14px 16px;}
+.cmp .modes{display:flex; gap:8px; align-items:center; margin-bottom:10px; flex-wrap:wrap;}
+.two{display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+@media (max-width:900px){ .two{grid-template-columns:1fr;} }
+.slot{padding:10px; min-height:120px;}
+.slot .media{background:#111; border-radius:8px; height:300px; display:flex; align-items:center; justify-content:center; overflow:hidden;}
+.slot .media img,.slot .media video{max-width:100%; max-height:100%; object-fit:contain;}
+.slot h4{font-size:13px; margin:8px 0 2px; display:flex; align-items:baseline; gap:8px;}
+.slot h4 .l{font-size:11px; font-weight:800; color:#fff; background:var(--accent); border-radius:6px; padding:0 6px;}
+.slot .pickEmpty{color:var(--ink3); text-align:center; padding:40px 10px;}
+.sharediff{margin-top:14px; display:grid; grid-template-columns:1fr 1fr; gap:14px;}
+@media (max-width:900px){ .sharediff{grid-template-columns:1fr;} }
+.sharediff h4{font-size:13px; margin-bottom:6px;}
+.sharediff ul{list-style:none; display:grid; gap:3px; font-size:12.5px;}
+.sharediff li b{color:var(--ink2); font-weight:600;}
+.sharediff li .ab{color:var(--ink3);}
+.notice{margin-top:12px; padding:8px 12px; border-radius:10px; background:var(--warn-soft); border:1px solid var(--warn); font-size:12.5px;}
+table.t{border-collapse:collapse; width:100%; font-size:12.5px; font-variant-numeric:tabular-nums;}
+table.t th,table.t td{padding:4px 8px; border-bottom:1px solid var(--line); text-align:right;}
+table.t th:first-child,table.t td:first-child{text-align:left;}
+table.t th{color:var(--ink3); font-weight:600; font-size:11.5px;}
+table.t td.mut{color:var(--ink3);}
+.bars{display:grid; gap:3px; font-size:12px; margin-top:6px;}
+.bars .row{display:grid; grid-template-columns:150px 1fr 60px; gap:8px; align-items:center;}
+.bars .bar{height:10px; background:var(--card2); border-radius:999px; overflow:hidden;}
+.bars .bar > div{height:100%; background:var(--accent); opacity:.8;}
+.seg{display:inline-flex; border:1px solid var(--line2); border-radius:8px; overflow:hidden;}
+.seg button{padding:4px 12px; border:0; background:var(--card2); cursor:pointer; font-weight:600;}
+.seg button.on{background:var(--accent); color:#fff;}
+.tray{position:fixed; right:18px; bottom:16px; z-index:45; display:flex; gap:8px; align-items:center; padding:8px 12px; background:var(--card); border:1px solid var(--line2); border-radius:12px; box-shadow:var(--shadow); font-size:12.5px;}
+.tray .mini{width:34px; height:34px; border-radius:6px; background:#111; object-fit:contain;}
+.tray .lbl{font-weight:700;}
+
+/* ── detail / modal ──────────────────────────────────── */
+.overlay{position:fixed; inset:0; z-index:50; background:rgba(0,0,0,.55); display:flex; align-items:flex-start; justify-content:center; padding:24px 16px; overflow:auto;}
+.modal{width:min(1180px,100%); background:var(--card); border-radius:14px; box-shadow:var(--shadow); border:1px solid var(--line);}
+.modal .mhead{display:flex; align-items:center; gap:10px; padding:10px 16px; border-bottom:1px solid var(--line); position:sticky; top:0; background:var(--card); z-index:2; border-radius:14px 14px 0 0;}
+.modal .mhead h2{font-size:15px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+.modal .mhead .x{border:0; background:transparent; font-size:22px; cursor:pointer; color:var(--ink3); line-height:1;}
+.det{display:grid; grid-template-columns:minmax(300px,440px) 1fr; gap:16px; padding:14px 16px 20px;}
+@media (max-width:900px){ .det{grid-template-columns:1fr;} }
+.det .mediaBox{background:#000; border-radius:10px; overflow:hidden; display:flex; align-items:center; justify-content:center; min-height:260px; max-height:66vh;}
+.det .mediaBox video,.det .mediaBox img{max-width:100%; max-height:66vh; display:block; object-fit:contain;}
+.det .facts{display:flex; flex-wrap:wrap; gap:4px 12px; margin-top:8px; font-size:12.5px; color:var(--ink2);}
+.det .facts b{color:var(--ink);}
+.det .warnl{margin-top:6px; font-size:12.5px; color:var(--warn); font-weight:600;}
+.det .actions{display:flex; gap:8px; margin-top:10px; flex-wrap:wrap;}
+.det section{margin-bottom:14px;}
+.det section h3{font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--ink3); margin-bottom:6px;}
+.det .txt{display:grid; grid-template-columns:max-content 1fr; gap:3px 10px; font-size:12.5px;}
+.det .txt dt{color:var(--ink3);}
+.det .txt dd{color:var(--ink);}
+.det .transcript{font-size:12.5px; color:var(--ink2); white-space:pre-wrap; max-height:160px; overflow:auto; padding:8px 10px; background:var(--card2); border-radius:8px;}
+.lblgrid{display:grid; gap:4px;}
+.lbl{display:grid; grid-template-columns:170px 1fr; gap:8px; padding:5px 8px; border-radius:8px; background:var(--card2); font-size:12.5px; align-items:start;}
+.lbl .dn{color:var(--ink3); font-size:12px;}
+.lbl .dv{display:flex; flex-wrap:wrap; gap:4px 8px; align-items:baseline;}
+.lbl .dv button{border:1px solid var(--line2); background:var(--card); border-radius:999px; padding:1px 8px; font-size:12px; cursor:pointer; font-weight:600;}
+.lbl .dv button:hover{border-color:var(--accent); color:var(--accent);}
+.lbl .dv .ev{flex-basis:100%; color:var(--ink2); font-size:12px;}
+.lbl .dv .cf{color:var(--ink3); font-size:11px;}
+.lbl.pend .dn::after{content:' · v2 label, re-tag pending'; color:var(--warn);}
+.det details.eng{border:1px dashed var(--line2); border-radius:10px; padding:8px 12px;}
+.det details.eng summary{cursor:pointer; font-weight:700; font-size:12.5px; color:var(--ink2);}
+.det details.eng dl{display:grid; grid-template-columns:max-content 1fr; gap:3px 12px; font-size:12px; margin-top:6px;}
+.det details.eng dt{font-weight:700; color:var(--ink);}
+.det .mot{display:flex; flex-wrap:wrap; gap:4px;}
+.det .mot span{font-size:11.5px; padding:1px 7px; border-radius:999px; border:1px solid var(--line2); color:var(--ink2);}
+
+/* ── reference ───────────────────────────────────────── */
+.ref{padding:14px 16px 18px; display:grid; gap:10px;}
+.ref label{display:grid; gap:3px; font-size:12.5px; color:var(--ink2);}
+.ref input,.ref textarea{padding:6px 9px; border:1px solid var(--line2); border-radius:8px; background:var(--card2); width:100%;}
+.ref textarea{min-height:56px; resize:vertical;}
+.ref pre{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; font-size:12px; white-space:pre-wrap; background:var(--card2); border:1px solid var(--line); border-radius:8px; padding:10px; max-height:260px; overflow:auto;}
+.ref .row{display:flex; gap:8px; align-items:center; flex-wrap:wrap;}
+.refs{padding:14px 16px;}
+.refs .item{border-top:1px solid var(--line); padding:8px 0; display:grid; grid-template-columns:1fr auto; gap:8px; font-size:12.5px;}
+.refs .item .m{color:var(--ink3); font-size:12px;}
+.loading{padding:40px; text-align:center; color:var(--ink3);}
+kbd{font-family:inherit; font-size:11px; padding:1px 5px; border:1px solid var(--line2); border-bottom-width:2px; border-radius:5px; background:var(--card2);}
+.topbar .backlink{font-size:12px;font-weight:400;margin-left:12px;opacity:.75;text-decoration:none;color:inherit;border:1px solid currentColor;border-radius:6px;padding:2px 8px}.topbar .backlink:hover{opacity:1}
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <h1>Ad Library <span>· history &amp; results</span> <span id="brandName"></span> <a class="backlink" href="rsstrategytool.html?brand=GRUB&amp;view=perf&amp;run=/data/grubhub/dimensiones-run.json,/data/grubhub/dimensiones-run_video.json&amp;fichas=/data/grubhub/fichas-dimensiones.json" title="Back to the Strategy OS: heatmap of dimensions and learning cards (analyst view)">↩ Strategy OS · heatmap</a></h1>
+  <div class="tabs" id="tabs">
+    <button data-view="gallery" class="on">Gallery</button>
+    <button data-view="dist">CPA by month</button>
+    <button data-view="compare">Compare</button>
+    <button data-view="refs">References <span id="nRefs"></span></button>
+  </div>
+  <div class="search"><input id="q" type="search" placeholder="Search a phrase: opening, hook, headline, CTA, transcript, ad name…" aria-label="Search"></div>
+  <label class="toggle" title="Inspect the pieces before knowing their result. Hides spend, conversions and CPA."><input type="checkbox" id="hide"> Look without numbers</label>
+  <div class="scope" id="scope">Loading…</div>
+</header>
+
+<div class="banner" id="banner">
+  <b>Retrospective history.</b> It does not predict the result of a new piece. Labels are automatic (a model), without human calibration yet.
+  In the backtest these labels did not order results better than a plain static-vs-video split. Use it as memory, not as an oracle.
+  <details id="defs"><summary>What the numbers mean</summary><dl id="defsList"></dl></details>
+</div>
+<div class="banner err" id="errBanner" hidden></div>
+
+<div class="layout" id="layout" hidden>
+  <aside class="card filters" id="filters">
+    <div class="sideHead"><h2 style="margin:0">Filters</h2><span class="editing" id="editing" hidden></span><button class="btn sm" id="btnClear">Clear</button></div>
+    <div id="filtersBody"></div>
+  </aside>
+
+  <main>
+    <div class="toolbar" id="toolbar">
+      <div class="chips" id="active"></div>
+      <span style="flex:1"></span>
+      <label class="small muted" id="sortWrap">Sort <select id="sort">
+        <option value="spend">Spend (activity)</option>
+        <option value="cpa">CPA, cheapest first (no conversions last)</option>
+        <option value="cpa_desc">CPA, most expensive first</option>
+        <option value="conv">Conversions</option>
+        <option value="launch">Launch date, newest</option>
+        <option value="match">Search match</option>
+      </select></label>
+    </div>
+    <div class="summary" id="summary"></div>
+    <div class="card know" id="know" hidden></div>
+    <div id="viewGallery"><div class="grid" id="grid"></div></div>
+    <div id="viewDist" class="card dist" hidden></div>
+    <div id="viewCompare" class="card cmp" hidden></div>
+    <div id="viewRefs" class="card refs" hidden></div>
+  </main>
+</div>
+<div class="loading" id="loading">Loading the index…</div>
+
+<div class="tray" id="tray" hidden></div>
+<div id="modalRoot"></div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+'use strict';
+// ── config ───────────────────────────────────────────────
+const P0 = new URLSearchParams(location.search);
+const BRAND = P0.get('brand') || 'grubhub';
+const URL_INDEX = '../data/' + BRAND + '/explorar-index.json';
+const URL_FICHAS = '../data/' + BRAND + '/fichas-dimensiones.json';
+const CMD_SERVER = 'py -m http.server 8765 --bind 127.0.0.1';
+const mediaSrc = p => '../' + p;
+const LS_REFS = 'explorarM6.refs.' + BRAND;
+const LOW_SPEND = 500;                       // se lee del manifest si está
+const AWARENESS = new Set(['reach_awareness', 'lpv_awareness']);
+// filtros que se muestran primero: la decisión del creativo (Astra §2), no las 38 desplegadas
+const PRIMARIAS = ['tactica_apertura', 'nfc_apertura', 'apertura_visual', 'formato', 'tipo_visual', 'talento_tipo', 'oferta_mecanica', 'duracion', 'tono'];
+const CTX_KEYS = [['mes', 'Month'], ['objetivo', 'Objective (by campaign name)'], ['funnel', 'Funnel (by campaign name)'], ['medio', 'File available'], ['medio_original', 'Original medium (Meta)']];
+const FAM_NAME = {medida: 'Measured (no model)', visual: 'Visual', audio: 'Audio', mensaje: 'Message', interpretativa: 'Interpretive (to calibrate)'};
+const $ = id => document.getElementById(id);
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[c]));
+const fmtN = n => n == null ? '—' : Number(n).toLocaleString('en-US', {maximumFractionDigits: 0});
+const fmtM = n => n == null ? '—' : (Math.abs(n) >= 1e6 ? '$' + (n / 1e6).toFixed(2) + 'M' : Math.abs(n) >= 1e4 ? '$' + (n / 1e3).toFixed(0) + 'k' : Math.abs(n) >= 1e3 ? '$' + (n / 1e3).toFixed(1) + 'k' : '$' + Number(n).toFixed(0));
+const fmtCPA = n => n == null ? '—' : '$' + Number(n).toFixed(n >= 100 ? 0 : 1);
+const fmtX = n => n == null ? '—' : Number(n).toFixed(2) + '×';
+const MON = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const mesL = ym => ym ? MON[parseInt(ym.slice(5, 7), 10) - 1] + ' ' + ym.slice(0, 4) : '—';
+const mesS = ym => ym ? MON[parseInt(ym.slice(5, 7), 10) - 1] : '—';
+const rango = ms => !ms.length ? '—' : ms.length === 1 ? mesL(ms[0]) : mesS(ms[0]) + '–' + mesS(ms[ms.length - 1]) + ' ' + ms[0].slice(0, 4);
+
+// ── estado ───────────────────────────────────────────────
+let IDX = null, ROWS = [], BYID = {}, TAX = null, DIM = {}, LBL = {}, FICHAS = {}, FICHAS_META = null, CAMP = {}, MAN = null;
+const S = {view: 'gallery', q: '', sort: 'spend', f: {}, mes: '', ad: null, pick: [], cmp: 'ads', fa: {}, fb: {}, side: 'a', hide: false, know: null};
+let lastMatch = {};      // id → campo donde matcheó la búsqueda
+
+// ── URL state ────────────────────────────────────────────
+function serF(f){ return Object.keys(f).filter(k => f[k] && f[k].size).sort().map(k => k + ':' + [...f[k]].sort().join('|')).join(';'); }
+function parF(s){ const f = {}; if (!s) return f; for (const part of s.split(';')) { const i = part.indexOf(':'); if (i < 0) continue; const k = part.slice(0, i), vs = part.slice(i + 1).split('|').filter(Boolean); if (vs.length) f[k] = new Set(vs); } return f; }
+function writeURL(){
+  const p = new URLSearchParams();
+  if (BRAND !== 'grubhub') p.set('brand', BRAND);
+  if (S.view !== 'gallery') p.set('view', S.view);
+  if (S.q) p.set('q', S.q);
+  if (S.sort !== 'spend') p.set('sort', S.sort);
+  const f = serF(S.f); if (f) p.set('f', f);
+  if (S.mes) p.set('mes', S.mes);
+  if (S.ad) p.set('ad', S.ad);
+  if (S.pick.length) p.set('pick', S.pick.join(','));
+  if (S.cmp !== 'ads') p.set('cmp', S.cmp);
+  const fa = serF(S.fa), fb = serF(S.fb); if (fa) p.set('fa', fa); if (fb) p.set('fb', fb);
+  if (S.side !== 'a') p.set('side', S.side);
+  if (S.hide) p.set('hide', '1');
+  if (S.know) p.set('know', S.know);
+  const qs = p.toString();
+  history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+  return qs;
+}
+function readURL(qs){
+  const p = new URLSearchParams(qs);
+  S.view = ['gallery', 'dist', 'compare', 'refs'].includes(p.get('view')) ? p.get('view') : 'gallery';
+  S.q = p.get('q') || ''; S.sort = p.get('sort') || 'spend'; S.f = parF(p.get('f')); S.mes = p.get('mes') || '';
+  S.ad = p.get('ad') || null; S.pick = (p.get('pick') || '').split(',').filter(x => BYID[x]).slice(0, 2);
+  S.cmp = p.get('cmp') === 'groups' ? 'groups' : 'ads'; S.fa = parF(p.get('fa')); S.fb = parF(p.get('fb')); S.side = p.get('side') === 'b' ? 'b' : 'a';
+  S.hide = p.get('hide') === '1'; S.know = p.get('know') || null;
+  if (S.ad && !BYID[S.ad]) S.ad = null;
+}
+
+// ── carga ────────────────────────────────────────────────
+async function fetchJson(url, opcional){
+  const r = await fetch(url, {cache: 'no-store'});
+  if (!r.ok) { if (opcional && r.status === 404) return null; throw new Error(url + ' → HTTP ' + r.status); }
+  return r.json();
+}
+function showErr(html){ const b = $('errBanner'); b.innerHTML = html; b.hidden = false; }
+async function init(){
+  try {
+    const [idx, fi] = await Promise.all([fetchJson(URL_INDEX), fetchJson(URL_FICHAS, true).catch(() => null)]);
+    IDX = idx; ROWS = idx.filas; TAX = idx.taxonomia; MAN = idx._manifest; CAMP = idx.campanas || {};
+    if (fi) { FICHAS_META = fi._manifest || null; for (const f of fi.fichas || []) FICHAS[f.clave] = f; }
+  } catch (e) {
+    $('loading').hidden = true;
+    showErr('<b>Could not load the index</b> (' + esc(e.message) + ').<br>Serve the page from the <b>repo root</b>, on this machine only: <code>' + CMD_SERVER +
+      '</code> and open <code>http://127.0.0.1:8765/app/explorar-m6.html</code>. If <code>data/' + esc(BRAND) + '/explorar-index.json</code> is missing, build it: <code>py dimensiones/indice_explorar.py --brand ' + esc(BRAND) + '</code> from <code>bridge/</code>. Media lives in <code>bridge/raw/media/</code> (gitignored: it has to be downloaded).');
+    return;
+  }
+  const orden = TAX.dimensiones.map(d => d.id);
+  for (const d of TAX.dimensiones) { DIM[d.id] = d; LBL[d.id] = {}; for (const v of d.valores) LBL[d.id][v.id] = v.label; }
+  for (const r of ROWS) {
+    BYID[r.id] = r;
+    r.ventanas = Object.keys(r.meses).sort();
+    r.elegible = r.spend >= (MAN.umbral_gris_spend || LOW_SPEND) && r.conv > 0;
+    r._t = {};
+    for (const k in r.dims) { const v = r.dims[k]; r._t[k] = new Set(Array.isArray(v) ? v : [v]); }
+    r._t.mes = new Set(r.ventanas); r._t.objetivo = new Set([r.ctx.objetivo]); r._t.funnel = new Set([r.ctx.funnel]); r._t.medio_original = new Set([r.medio_original || 'unknown']);
+    r._ev = {}; (r.ev || []).forEach((e, i) => { if (e) r._ev[orden[i]] = e; });
+    const c = r.crudos || {};
+    r._txt = {opening: (c.opening_copy || '').toLowerCase(), hook: (c.hook_copy || '').toLowerCase(), headline: (c.headline_copy || '').toLowerCase(), cta: (c.cta_all || '').toLowerCase(),
+              description: (c.descripcion_1_linea || '').toLowerCase(), transcript: (r.transcript || '').toLowerCase(), 'ad name': (r.nombres || []).join(' ').toLowerCase(), product: (c.product_raw || '').toLowerCase()};
+  }
+  readURL(location.search);
+  $('brandName').textContent = '· ' + (BRAND.charAt(0).toUpperCase() + BRAND.slice(1));
+  const vs = MAN.ventanas || [];
+  $('scope').innerHTML = '<b>' + fmtN(ROWS.length) + ' ads in this dataset</b> · ' + esc(rango(vs)) + ' · ' + fmtN(MAN.n.observaciones_ad_mes) + ' ad × month observations · source: Motion export per ad × month' +
+    (MAN.conv_event ? ' (conversion = <code>' + esc(MAN.conv_event) + '</code>)' : '') + ' · labels M6 v3 <code>' + esc(MAN.taxonomia.version) + '</code> (' + esc(MAN.fuente_dims_modelos.gemini) + (MAN.fuente_dims.juez ? ' + judge on ' + MAN.fuente_dims.juez : '') + ')' +
+    ' · index built ' + esc((MAN.generado || '').slice(0, 10)) + (MAN.commit ? ' @ <code>' + esc(MAN.commit) + '</code>' : '') + (FICHAS_META ? ' · cards ' + esc((FICHAS_META.generado || '').slice(0, 10)) : ' · no cards loaded');
+  const D = MAN.definiciones || {};
+  $('defsList').innerHTML = [['CPA', D.cpa], ['CPA of a set', D.cpa_conjunto], ['Monthly CPA', D.cpa_mes], ['Account benchmark (month)', D.benchmark_mes], ['Ads vs observations', D.ads_vs_observaciones], ['Objective / funnel', D.objetivo], ['File vs original medium', D.medio], ['Chips', D.chips], ['Low spend', D.elegible_ui], ['×CPA', D.x_cpa], ['R', D.R], ['Expected conversions', D.conv_esperadas], ['Engine signal', D.senal], ['Effect vs account', D.efecto_vs_cuenta]]
+    .filter(x => x[1]).map(x => '<dt>' + esc(x[0]) + '</dt><dd>' + esc(x[1]) + '</dd>').join('');
+  $('q').value = S.q; $('sort').value = S.sort; $('hide').checked = S.hide; document.body.classList.toggle('hide', S.hide);
+  $('q').addEventListener('input', () => { S.q = $('q').value.trim(); if (S.q && S.sort === 'spend') { S.sort = 'match'; $('sort').value = 'match'; } if (!S.q && S.sort === 'match') { S.sort = 'spend'; $('sort').value = 'spend'; } render(); });
+  $('sort').addEventListener('change', () => { S.sort = $('sort').value; render(); });
+  $('hide').addEventListener('change', () => { S.hide = $('hide').checked; document.body.classList.toggle('hide', S.hide); writeURL(); });
+  $('btnClear').addEventListener('click', () => { const t = target(); for (const k in t) delete t[k]; if (t === S.f) { S.q = ''; $('q').value = ''; S.know = null; } render(); });
+  $('tabs').addEventListener('click', e => { const b = e.target.closest('button[data-view]'); if (b) setVista(b.dataset.view); });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') { if (S.ad) cerrar(); closeModal('refModal'); } });
+  buildFilters();
+  $('loading').hidden = true; $('layout').hidden = false;
+  render();
+  if (S.ad) abrir(S.ad, true);
+  document.body.dataset.ready = '1';
+}
+
+// ── filtros ──────────────────────────────────────────────
+const target = () => S.view === 'compare' && S.cmp === 'groups' ? (S.side === 'b' ? S.fb : S.fa) : S.f;
+function match(r, f, except){
+  for (const k in f) { if (k === except) continue; const set = f[k]; if (!set || !set.size) continue; const vals = r._t[k]; if (!vals) return false; let ok = false; for (const v of vals) if (set.has(v)) { ok = true; break; } if (!ok) return false; }
+  return true;
+}
+function matchQ(r){
+  if (!S.q) return 'all';
+  const q = S.q.toLowerCase();
+  for (const k of ['opening', 'hook', 'headline', 'cta', 'description', 'transcript', 'ad name', 'product']) if (r._txt[k] && r._txt[k].includes(q)) return k;
+  return null;
+}
+function filtrar(f, except, conQ){
+  const out = [];
+  for (const r of ROWS) { if (!match(r, f, except)) continue; if (conQ !== false) { const m = matchQ(r); if (!m) continue; if (except == null) lastMatch[r.id] = m; } out.push(r); }
+  return out;
+}
+function valoresDe(key){
+  if (key === 'mes') return (MAN.ventanas || []).map(m => [m, mesL(m)]);
+  if (key === 'objetivo') { const s = new Set(ROWS.map(r => r.ctx.objetivo)); return [...s].sort().map(o => [o, o]); }
+  if (key === 'funnel') return [['TOF', 'TOF'], ['MOF', 'MOF'], ['BOF', 'BOF']];
+  if (key === 'medio_original') return [['video', 'video'], ['image', 'image'], ['carousel', 'carousel'], ['unknown', 'unknown (Meta: CATCH_ALL / effectivePost)']];
+  const d = DIM[key]; if (!d) return [];
+  const vals = d.valores.map(v => [v.id, v.label]);
+  const seen = new Set(vals.map(v => v[0]));
+  for (const r of ROWS) for (const v of (r._t[key] || [])) if (!seen.has(v)) { seen.add(v); vals.push([v, v === 'unknown' ? 'Unknown' : v === 'na' ? 'N/A' : v]); }
+  return vals;
+}
+function dimBlock(key, nombre, about){
+  return '<details class="dim" data-dim="' + esc(key) + '"><summary><span class="caret">▶</span><span class="name">' + esc(nombre) + '</span><span class="n"></span></summary>' +
+    (about ? '<div class="about">' + about + '</div>' : '') + '<div class="vals"></div></details>';
+}
+function aboutDim(d){
+  const eq = [d.nombre_rs && d.nombre_rs !== d.nombre ? 'RS: ' + d.nombre_rs : null, d.motion_internal ? 'Motion: ' + d.motion_internal : null, d.estado === 'metadata' ? 'descriptive only (metadata)' : null, d.calibrar ? 'needs human calibration' : null].filter(Boolean);
+  return esc(d.que_mide || '') + (eq.length ? ' <span class="eq">· ' + esc(eq.join(' · ')) + '</span>' : '');
+}
+function buildFilters(){
+  let h = '<h2>Scope</h2>';
+  for (const [k, n] of CTX_KEYS) h += dimBlock(k, n, k === 'objetivo' ? 'Classified from the campaign name (mapping ' + esc(MAN.mapeo_campanas || '') + '), not verified against the Meta optimization goal. Dominant by spend when an ad ran in several campaigns.' : k === 'medio' ? 'The file we have locally. Not the same as the original medium Meta reports.' : k === 'medio_original' ? MAN.definiciones.medio : k === 'mes' ? 'Months with spend for the ad. Pick exactly one month to see that month\'s CPA against that month\'s account benchmark.' : '');
+  if (DIM.producto) h += dimBlock('producto', 'Product', aboutDim(DIM.producto));
+  h += '<h2>What I\'m deciding</h2>';
+  for (const k of PRIMARIAS) if (DIM[k]) h += dimBlock(k, DIM[k].nombre, aboutDim(DIM[k]));
+  const rest = TAX.dimensiones.filter(d => !PRIMARIAS.includes(d.id) && d.id !== 'producto' && d.id !== 'medio');
+  h += '<details class="more"><summary>More filters (' + rest.length + ' labels, by family)</summary>';
+  for (const fam of ['visual', 'audio', 'mensaje', 'interpretativa', 'medida']) {
+    const ds = rest.filter(d => d.familia === fam); if (!ds.length) continue;
+    h += '<h2>' + esc(FAM_NAME[fam] || fam) + '</h2>';
+    for (const d of ds) h += dimBlock(d.id, d.nombre, aboutDim(d));
+  }
+  h += '</details>';
+  $('filtersBody').innerHTML = h;
+  $('filtersBody').addEventListener('change', e => {
+    const cb = e.target.closest('input[type=checkbox][data-key]'); if (!cb) return;
+    setFiltro(cb.dataset.key, cb.dataset.val, cb.checked);
+  });
+}
+function renderFilters(){
+  const f = target();
+  const base = {};
+  for (const el of $('filtersBody').querySelectorAll('details.dim')) {
+    const key = el.dataset.dim; const sel = f[key] || new Set();
+    const rows = filtrar(f, key, true); base[key] = rows;
+    const counts = {}; for (const r of rows) for (const v of (r._t[key] || [])) counts[v] = (counts[v] || 0) + 1;
+    const vals = valoresDe(key).slice().sort((a, b) => (sel.has(b[0]) - sel.has(a[0])) || ((counts[b[0]] || 0) - (counts[a[0]] || 0)) || a[1].localeCompare(b[1]));
+    const d = DIM[key];
+    el.querySelector('.vals').innerHTML = vals.map(([v, l]) => { const c = counts[v] || 0; const def = d ? (d.valores.find(x => x.id === v) || {}).def : '';
+      return '<label class="' + (c ? '' : 'zero') + '" title="' + esc(def || l) + '"><input type="checkbox" data-key="' + esc(key) + '" data-val="' + esc(v) + '"' + (sel.has(v) ? ' checked' : '') + '> <span>' + esc(l) + '</span><span class="c">' + c + '</span></label>'; }).join('');
+    el.querySelector('.n').textContent = sel.size ? sel.size : '';
+    if (sel.size) el.open = true;
+  }
+  const ed = $('editing'); ed.hidden = !(S.view === 'compare' && S.cmp === 'groups'); ed.textContent = 'editing group ' + S.side.toUpperCase();
+}
+function setFiltro(key, val, on){
+  const f = target(); if (!f[key]) f[key] = new Set();
+  if (on) { f[key].add(val); S.know = key + ':' + val; } else { f[key].delete(val); if (!f[key].size) delete f[key]; if (S.know === key + ':' + val) S.know = null; }
+  render();
+}
+function labelDe(key, v){
+  if (key === 'mes') return mesL(v);
+  if (LBL[key] && LBL[key][v]) return LBL[key][v];
+  return v === 'unknown' ? 'Unknown' : v === 'na' ? 'N/A' : v;
+}
+function nombreDim(key){ const c = CTX_KEYS.find(x => x[0] === key); return c ? c[1].replace(/ \(.*\)$/, '') : DIM[key] ? DIM[key].nombre : key; }
+function chipsActivos(f, cls){
+  let h = '';
+  for (const k of Object.keys(f).sort()) for (const v of [...f[k]].sort()) h += '<span class="chip ' + (cls || '') + (CTX_KEYS.some(x => x[0] === k) ? ' ctx' : '') + '" data-key="' + esc(k) + '" data-val="' + esc(v) + '"><span class="muted">' + esc(nombreDim(k)) + ':</span> ' + esc(labelDe(k, v)) + '<button title="Remove" data-rm="1">×</button></span>';
+  return h;
+}
+
+// ── agregados (reglas: Σspend/Σconv; mismo mes contra mismo mes) ──
+function agregar(rows, mes){
+  const a = {n: rows.length, obs: 0, spend: 0, conv: 0, conv_esp: 0, sin_conv: 0, cpa: null, R: null, bench: mes ? (MAN.benchmarks_por_ventana || {})[mes] : null, low: 0};
+  for (const r of rows) {
+    if (mes) { const m = r.meses[mes]; if (!m) continue; a.obs++; a.spend += m.spend; a.conv += m.conv; if (m.bench) a.conv_esp += m.spend / m.bench; if (!m.conv) a.sin_conv++; }
+    else { a.obs += r.ventanas.length; a.spend += r.spend; a.conv += r.conv; if (r.conv_esperadas) a.conv_esp += r.conv_esperadas; if (!r.conv) a.sin_conv++; if (r.spend < (MAN.umbral_gris_spend || LOW_SPEND)) a.low++; }
+  }
+  a.cpa = a.conv ? a.spend / a.conv : null; a.R = a.conv_esp ? a.conv / a.conv_esp : null;
+  return a;
+}
+const unMes = () => (S.f.mes && S.f.mes.size === 1) ? [...S.f.mes][0] : '';
+
+// ── render ───────────────────────────────────────────────
+function ordenar(rows){
+  const mes = unMes();
+  const cpaDe = r => mes ? (r.meses[mes] && r.meses[mes].cpa) : r.cpa;
+  const spendDe = r => mes ? (r.meses[mes] ? r.meses[mes].spend : 0) : r.spend;
+  const convDe = r => mes ? (r.meses[mes] ? r.meses[mes].conv : 0) : r.conv;
+  const s = S.sort;
+  const cmp = {
+    spend: (a, b) => spendDe(b) - spendDe(a),
+    conv: (a, b) => convDe(b) - convDe(a) || spendDe(b) - spendDe(a),
+    cpa: (a, b) => { const x = cpaDe(a), y = cpaDe(b); if (x == null && y == null) return spendDe(b) - spendDe(a); if (x == null) return 1; if (y == null) return -1; return x - y; },
+    cpa_desc: (a, b) => { const x = cpaDe(a), y = cpaDe(b); if (x == null && y == null) return spendDe(b) - spendDe(a); if (x == null) return 1; if (y == null) return -1; return y - x; },
+    launch: (a, b) => String(b.launch || '').localeCompare(String(a.launch || '')) || spendDe(b) - spendDe(a),
+    match: (a, b) => { const o = ['opening', 'hook', 'headline', 'cta', 'ad name', 'description', 'product', 'transcript', 'all']; return o.indexOf(lastMatch[a.id] || 'all') - o.indexOf(lastMatch[b.id] || 'all') || spendDe(b) - spendDe(a); },
+  }[s] || ((a, b) => spendDe(b) - spendDe(a));
+  return rows.slice().sort(cmp);
+}
+function render(){
+  renderFilters();
+  for (const b of $('tabs').querySelectorAll('button')) b.classList.toggle('on', b.dataset.view === S.view);
+  $('viewGallery').hidden = S.view !== 'gallery'; $('viewDist').hidden = S.view !== 'dist'; $('viewCompare').hidden = S.view !== 'compare'; $('viewRefs').hidden = S.view !== 'refs';
+  $('toolbar').hidden = S.view === 'refs'; $('summary').hidden = S.view === 'refs' || S.view === 'compare'; $('sortWrap').hidden = S.view !== 'gallery';
+  const f = target();
+  $('active').innerHTML = (S.q ? '<span class="chip q">“' + esc(S.q) + '”<button data-rmq="1" title="Clear search">×</button></span>' : '') + chipsActivos(f) || '<span class="muted small">No filters: the whole dataset.</span>';
+  $('active').onclick = e => { const b = e.target.closest('button'); if (!b) return; if (b.dataset.rmq) { S.q = ''; $('q').value = ''; if (S.sort === 'match') { S.sort = 'spend'; $('sort').value = 'spend'; } render(); return; } const c = b.closest('.chip'); if (c && c.dataset.key) setFiltro(c.dataset.key, c.dataset.val, false); };
+  renderKnow();
+  if (S.view === 'gallery') renderGallery();
+  else if (S.view === 'dist') renderDist();
+  else if (S.view === 'compare') renderCompare();
+  else if (S.view === 'refs') renderRefs();
+  renderTray();
+  $('nRefs').textContent = refsLeer().length ? '(' + refsLeer().length + ')' : '';
+  writeURL();
+}
+function renderSummary(rows){
+  const mes = unMes(); const a = agregar(rows, mes);
+  let h = '<span><b>' + fmtN(a.n) + '</b> ads</span><span><b>' + fmtN(a.obs) + '</b> ad × month observations</span>';
+  h += '<span class="hideable">spend <b>' + fmtM(a.spend) + '</b></span><span class="hideable">conversions <b>' + fmtN(a.conv) + '</b></span>';
+  if (mes) h += '<span class="hideable" title="' + esc(MAN.definiciones.cpa_conjunto) + '">CPA in ' + esc(mesL(mes)) + ' <b>' + fmtCPA(a.cpa) + '</b></span><span class="hideable" title="' + esc(MAN.definiciones.benchmark_mes) + '">account benchmark ' + esc(mesL(mes)) + ' <b>' + fmtCPA(a.bench) + '</b></span>';
+  else h += '<span class="hideable" title="' + esc(MAN.definiciones.cpa_conjunto) + '">aggregate CPA ' + esc(rango(MAN.ventanas || [])) + ' <b>' + fmtCPA(a.cpa) + '</b> <span class="muted">(a period has no single benchmark: pick a month to compare)</span></span>';
+  if (a.sin_conv) h += '<span class="hideable">' + fmtN(a.sin_conv) + ' with spend and no conversions</span>';
+  if (!mes && a.low) h += '<span class="hideable muted">' + fmtN(a.low) + ' under ' + fmtM(MAN.umbral_gris_spend || LOW_SPEND) + ' spend</span>';
+  $('summary').innerHTML = h;
+}
+function renderKnow(){
+  const el = $('know');
+  if (!S.know || S.view === 'refs') { el.hidden = true; return; }
+  const [key, val] = [S.know.slice(0, S.know.indexOf(':')), S.know.slice(S.know.indexOf(':') + 1)];
+  const d = DIM[key]; const def = d ? (d.valores.find(x => x.id === val) || {}).def : '';
+  const fi = FICHAS[key + ':' + val];
+  let h = '<h3>What do we know about “' + esc(labelDe(key, val)) + '” <span>· ' + esc(nombreDim(key)) + '</span></h3>';
+  if (def) h += '<div class="def">' + esc(def) + '</div>';
+  if (fi) {
+    const v = fi.lo_que_vimos || {};
+    h += '<p>' + esc(fi.lectura || '(no reading for this label)') + '</p>';
+    h += '<div class="facts">Card for the whole dataset: ' + fmtN(v.creativos) + ' ads · spend ' + fmtM(v.spend) + ' · aggregate CPA ' + fmtCPA(v.cpa) + (fi.estado === 'metadata' ? ' · descriptive dimension (metadata), not scored' : '') + (fi.calibrar ? ' · interpretive: needs human calibration' : '') + '</div>';
+    const lim = (fi.advertencias || []).filter(a => a.nivel === 'limita').slice(0, 2);
+    if (lim.length) h += '<div class="lim">' + lim.map(a => esc(a.texto)).join(' · ') + '</div>';
+    h += '<div class="lim">This card covers the whole account (' + fmtN(ROWS.length) + ' ads). It is not recalculated for your current filters. Analyst note, in Spanish, generated by fixed rules (fichas.py).</div>';
+  } else if (!Object.keys(FICHAS).length) h += '<p class="muted">No cards loaded (fichas-dimensiones.json).</p>';
+  else h += '<p class="muted">No card for this label: it is a scope filter, a metadata dimension or below the card thresholds. What you see in the gallery is all we have.</p>';
+  el.innerHTML = h; el.hidden = false;
+}
+function thumbHTML(r){
+  const src = mediaSrc(r.primer_frame || r.archivo);
+  return '<div class="thumb"><img loading="lazy" src="' + esc(src) + '" alt="">' + (r.medio === 'video' ? '<div class="play">▶</div>' : '') +
+    (r.duracion_s ? '<span class="tag">' + Math.round(r.duracion_s) + 's</span>' : '') + (r.solo_thumbnail ? '<span class="tag r warnt">thumbnail only</span>' : (r.medio_original === 'unknown' ? '<span class="tag r">' + (r.medio === 'video' ? 'VID' : 'STA') + ' file · Meta: ?</span>' : '<span class="tag r">' + esc(r.medio_original) + '</span>')) + '</div>';
+}
+function resultadoHTML(r, mes){
+  if (mes) {
+    const m = r.meses[mes]; if (!m) return '<div class="res low">no spend in ' + esc(mesL(mes)) + '</div>';
+    if (!m.conv) return '<div class="res low"><b>No conversions</b> · ' + fmtM(m.spend) + ' spent in ' + esc(mesS(mes)) + '</div>';
+    return '<div class="res' + (m.spend < (MAN.umbral_gris_spend || LOW_SPEND) ? ' low' : '') + '"><b>CPA ' + fmtCPA(m.cpa) + '</b> <span class="vs">vs account ' + fmtCPA(m.bench) + '</span> · ' + fmtM(m.spend) + ' · ' + fmtN(m.conv) + ' conv · ' + esc(mesS(mes)) + '</div>';
+  }
+  if (!r.conv) return '<div class="res low"><b>No conversions</b> · ' + fmtM(r.spend) + ' spent · ' + esc(rango(r.ventanas)) + '</div>';
+  return '<div class="res' + (r.elegible ? '' : ' low') + '"><b>CPA ' + fmtCPA(r.cpa) + '</b> <span class="vs">' + esc(rango(r.ventanas)) + ' aggregate</span> · ' + fmtM(r.spend) + ' · ' + fmtN(r.conv) + ' conv' + (r.spend < (MAN.umbral_gris_spend || LOW_SPEND) ? ' · low spend' : '') + '</div>';
+}
+function ctxHTML(r){
+  const aw = AWARENESS.has(r.ctx.objetivo);
+  return '<div class="ctxl" title="' + esc((CAMP[r.ctx.campana] || {}).nombre || '') + '">' + (aw ? '<span class="aw" title="Classified as awareness by campaign name. CPA alone does not evaluate that objective.">⚠ </span>' : '') + esc(r.ctx.objetivo) + ' · ' + esc(r.ctx.funnel) + (r.ctx.campanas.length > 1 ? ' · ' + r.ctx.campanas.length + ' campaigns' : '') + ' · ' + r.ventanas.length + ' mo · ' + fmtN(r.n_ads) + (r.n_ads === 1 ? ' ad' : ' ads') + '</div>';
+}
+function renderGallery(){
+  const rows = ordenar(filtrar(S.f));
+  renderSummary(rows);
+  const mes = unMes();
+  const g = $('grid');
+  if (!rows.length) { g.innerHTML = '<div class="empty">No ads match these filters. Widen the search: remove a filter or a month. Nothing is hidden for low spend.</div>'; return; }
+  g.innerHTML = rows.map(r => {
+    const copy = r.crudos.opening_copy || r.crudos.hook_copy || r.crudos.descripcion_1_linea || '';
+    const picked = S.pick.includes(r.id);
+    return '<article class="card ad" data-id="' + esc(r.id) + '">' + thumbHTML(r) + '<div class="body">' +
+      (S.q && lastMatch[r.id] && lastMatch[r.id] !== 'all' ? '<div class="match">match in ' + esc(lastMatch[r.id]) + '</div>' : '') +
+      '<div class="copy' + (copy ? '' : ' empty') + '" title="' + esc(copy) + '">' + esc(copy || 'no on-screen text captured') + '</div>' +
+      '<div class="lbls">' + (r.chips || []).map(c => '<span title="' + esc(nombreDim(c[0])) + ' · ' + Math.round(c[2] * 100) + '% of ads carry it">' + esc(labelDe(c[0], c[1])) + '</span>').join('') + '</div>' +
+      resultadoHTML(r, mes) + ctxHTML(r) + '</div>' +
+      '<div class="foot"><button class="btn sm' + (picked ? ' picked' : '') + '" data-pick="' + esc(r.id) + '">' + (picked ? '✓ In compare' : 'Compare') + '</button><button class="btn sm" data-open="' + esc(r.id) + '">Open</button></div></article>';
+  }).join('');
+  g.onclick = e => {
+    const p = e.target.closest('button[data-pick]'); if (p) { e.stopPropagation(); togglePick(p.dataset.pick); return; }
+    const o = e.target.closest('button[data-open]'); if (o) { e.stopPropagation(); abrir(o.dataset.open); return; }
+    const a = e.target.closest('article.ad'); if (a) abrir(a.dataset.id);
+  };
+}
+
+// ── distribución: CPA por anuncio para UN mes ────────────
+function distribucion(mes, rows){
+  const out = {mes, bench: (MAN.benchmarks_por_ventana || {})[mes] || null, con: [], sin: []};
+  for (const r of rows || filtrar(S.f)) { const m = r.meses[mes]; if (!m || !m.spend) continue; (m.conv ? out.con : out.sin).push({id: r.id, cpa: m.cpa, spend: m.spend, conv: m.conv}); }
+  out.con.sort((a, b) => a.cpa - b.cpa); out.sin.sort((a, b) => b.spend - a.spend);
+  return out;
+}
+function renderDist(){
+  const rows = filtrar(S.f);
+  const meses = (MAN.ventanas || []).filter(m => rows.some(r => r.meses[m]));
+  if (!S.mes || !meses.includes(S.mes)) S.mes = meses[meses.length - 1] || '';
+  renderSummary(rows);
+  const el = $('viewDist');
+  if (!S.mes) { el.innerHTML = '<div class="empty">No month with spend in this selection.</div>'; return; }
+  const d = distribucion(S.mes, rows);
+  const W = 1000, H = 190, L = 40, R = 30, y0 = 70, yz = 140;
+  const all = d.con.map(x => x.cpa).concat(d.bench ? [d.bench] : []);
+  const lo = Math.max(1, Math.min(...all, 1e9) / 1.3), hi = Math.max(...all, 10) * 1.3;
+  const x = v => L + (Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) * (W - L - R);
+  const ticks = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000].filter(t => t >= lo && t <= hi);
+  const sp = d.sin.map(s => s.spend); const slo = Math.max(1, Math.min(...sp, 1e9) / 1.3), shi = Math.max(...sp, 10) * 1.3;
+  const xs = v => L + (Math.log(v) - Math.log(slo)) / (Math.log(shi) - Math.log(slo)) * (W - L - R);
+  // jitter determinista por posición para que los puntos cercanos no se tapen del todo
+  const jit = (i, n) => ((i * 37) % 7 - 3) * 2.2;
+  let svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="CPA per ad in ' + esc(mesL(S.mes)) + '">';
+  svg += '<line class="axis" x1="' + L + '" x2="' + (W - R) + '" y1="' + y0 + '" y2="' + y0 + '"/>';
+  for (const t of ticks) svg += '<line class="axis" x1="' + x(t) + '" x2="' + x(t) + '" y1="' + (y0 - 4) + '" y2="' + (y0 + 4) + '"/><text class="tick" x="' + x(t) + '" y="' + (y0 + 18) + '" text-anchor="middle">$' + t + '</text>';
+  svg += '<text class="tick" x="' + L + '" y="14">CPA per ad in ' + esc(mesL(S.mes)) + ' (log scale) · one dot = one ad, same size · ' + d.con.length + ' ads with conversions</text>';
+  if (d.bench) { const right = x(d.bench) > W * 0.6; svg += '<line class="bench" x1="' + x(d.bench) + '" x2="' + x(d.bench) + '" y1="' + (y0 - 38) + '" y2="' + (y0 + 8) + '"/><text class="benchl" x="' + (x(d.bench) + (right ? -6 : 6)) + '" y="' + (y0 - 28) + '" text-anchor="' + (right ? 'end' : 'start') + '">Account benchmark ' + esc(mesL(S.mes)) + ': ' + fmtCPA(d.bench) + '</text>'; }
+  d.con.forEach((p, i) => { svg += '<circle class="dot" data-id="' + esc(p.id) + '" cx="' + x(p.cpa).toFixed(1) + '" cy="' + (y0 - 12 + jit(i)).toFixed(1) + '" r="5.5"/>'; });
+  svg += '<text class="bandl" x="' + L + '" y="' + (yz - 22) + '">Spend, no conversions in ' + esc(mesS(S.mes)) + ': ' + d.sin.length + (d.sin.length ? ' ads (placed by spend, not by CPA — there is no CPA)' : '') + '</text>';
+  if (d.sin.length) { svg += '<line class="axis" x1="' + L + '" x2="' + (W - R) + '" y1="' + yz + '" y2="' + yz + '"/>';
+    for (const t of [100, 500, 1000, 5000, 10000, 50000].filter(t => t >= slo && t <= shi)) svg += '<text class="tick" x="' + xs(t) + '" y="' + (yz + 16) + '" text-anchor="middle">' + fmtM(t) + '</text>';
+    d.sin.forEach((p, i) => { svg += '<circle class="dot zero" data-id="' + esc(p.id) + '" cx="' + xs(p.spend).toFixed(1) + '" cy="' + (yz - 10 + jit(i)).toFixed(1) + '" r="5.5"/>'; }); }
+  svg += '</svg>';
+  const a = agregar(rows, S.mes);
+  el.innerHTML = '<div class="head"><label class="small muted">Month <select id="mesSel">' + meses.map(m => '<option value="' + m + '"' + (m === S.mes ? ' selected' : '') + '>' + esc(mesL(m)) + '</option>').join('') + '</select></label>' +
+    '<span class="small muted">' + fmtN(a.obs) + ' ads with spend in ' + esc(mesL(S.mes)) + ' · spend ' + fmtM(a.spend) + ' · ' + fmtN(a.conv) + ' conversions · CPA of the set ' + fmtCPA(a.cpa) + '</span>' +
+    '<span style="flex:1"></span><button class="btn sm" id="btnSortMes">Sort the gallery by ' + esc(mesS(S.mes)) + ' CPA</button></div>' + svg +
+    '<div class="note">Hover a dot for the ad; click to open it. Spend and conversions are in the detail. Dispersion, middle cases and extremes are all here: no confidence bands, no “winner” zone. Filters on the left apply; the benchmark line is the <b>account\'s</b> CPA that month (all its spend / all its conversions), not the selection\'s.</div>';
+  $('mesSel').addEventListener('change', e => { S.mes = e.target.value; render(); });
+  $('btnSortMes').addEventListener('click', () => { S.f.mes = new Set([S.mes]); S.sort = 'cpa'; $('sort').value = 'cpa'; setVista('gallery'); });
+  el.querySelectorAll('.dot').forEach(c => {
+    c.addEventListener('click', () => abrir(c.dataset.id));
+    c.addEventListener('mousemove', e => { const r = BYID[c.dataset.id], m = r.meses[S.mes]; const t = $('tip'); t.hidden = false;
+      t.innerHTML = '<img src="' + esc(mediaSrc(r.primer_frame || r.archivo)) + '" alt=""><div><b>' + (m.conv ? 'CPA ' + fmtCPA(m.cpa) : 'No conversions') + '</b> · ' + fmtM(m.spend) + ' · ' + fmtN(m.conv) + ' conv</div><div class="muted">' + esc(r.ctx.objetivo) + ' · ' + esc((r.crudos.opening_copy || r.nombres[0] || '').slice(0, 60)) + '</div>';
+      t.style.left = Math.min(e.clientX + 14, window.innerWidth - 215) + 'px'; t.style.top = Math.min(e.clientY + 14, window.innerHeight - 200) + 'px'; });
+    c.addEventListener('mouseleave', () => { $('tip').hidden = true; });
+  });
+}
+
+// ── compare ──────────────────────────────────────────────
+function togglePick(id){ const i = S.pick.indexOf(id); if (i >= 0) S.pick.splice(i, 1); else { if (S.pick.length >= 2) S.pick.shift(); S.pick.push(id); } render(); }
+function renderTray(){
+  const t = $('tray');
+  if (!S.pick.length || S.view === 'compare') { t.hidden = true; return; }
+  t.hidden = false;
+  t.innerHTML = '<span class="lbl">Compare</span>' + S.pick.map((id, i) => { const r = BYID[id]; return '<img class="mini" src="' + esc(mediaSrc(r.primer_frame || r.archivo)) + '" title="' + esc(r.nombres[0] || id) + '" alt="">'; }).join('') +
+    (S.pick.length < 2 ? '<span class="muted">pick one more</span>' : '<button class="btn sm primary" data-go="1">Side by side</button>') + '<button class="btn sm" data-clr="1">Clear</button>';
+  t.onclick = e => { if (e.target.closest('[data-go]')) { S.cmp = 'ads'; setVista('compare'); } else if (e.target.closest('[data-clr]')) { S.pick = []; render(); } };
+}
+function mesesTabla(r, conTotal){
+  let h = '<table class="t"><tr><th>Month</th><th>Spend</th><th>Conv</th><th title="' + esc(MAN.definiciones.cpa_mes) + '">CPA</th><th title="' + esc(MAN.definiciones.benchmark_mes) + '">Account bench</th><th>vs bench</th></tr>';
+  for (const ym of r.ventanas) { const m = r.meses[ym]; h += '<tr><td>' + esc(mesL(ym)) + '</td><td>' + fmtM(m.spend) + '</td><td>' + fmtN(m.conv) + '</td><td>' + (m.conv ? fmtCPA(m.cpa) : '<span class="mut">no conv</span>') + '</td><td class="mut">' + fmtCPA(m.bench) + '</td><td>' + (m.conv && m.bench ? fmtX(m.cpa / m.bench) : '—') + '</td></tr>'; }
+  if (conTotal !== false) h += '<tr><td><b>' + esc(rango(r.ventanas)) + ' aggregate</b></td><td><b>' + fmtM(r.spend) + '</b></td><td><b>' + fmtN(r.conv) + '</b></td><td><b>' + (r.conv ? fmtCPA(r.cpa) : 'no conv') + '</b></td><td class="mut" colspan="2">no single benchmark for a period</td></tr>';
+  return h + '</table>';
+}
+function valTxt(r, k){ const v = r.dims[k]; if (v == null) return null; return (Array.isArray(v) ? v : [v]).map(x => labelDe(k, x)).join(', '); }
+function compararDos(a, b){
+  const share = [], differ = [];
+  for (const d of TAX.dimensiones) { const va = valTxt(a, d.id), vb = valTxt(b, d.id); if (va == null && vb == null) continue; if (va === vb) { if (!['unknown', 'N/A', 'None', 'Unknown'].includes(va)) share.push([d.nombre, va]); } else differ.push([d.nombre, va || '—', vb || '—']); }
+  const ctxd = [];
+  if (a.ctx.objetivo !== b.ctx.objetivo) ctxd.push(['Objective (by name)', a.ctx.objetivo, b.ctx.objetivo]); else share.push(['Objective (by name)', a.ctx.objetivo]);
+  if (a.ctx.funnel !== b.ctx.funnel) ctxd.push(['Funnel (by name)', a.ctx.funnel, b.ctx.funnel]);
+  if (a.ctx.campana !== b.ctx.campana) ctxd.push(['Dominant campaign', (CAMP[a.ctx.campana] || {}).nombre || a.ctx.campana, (CAMP[b.ctx.campana] || {}).nombre || b.ctx.campana]); else share.push(['Dominant campaign', (CAMP[a.ctx.campana] || {}).nombre || a.ctx.campana]);
+  const ma = a.ventanas.join(','), mb = b.ventanas.join(','); const common = a.ventanas.filter(m => b.ventanas.includes(m));
+  if (ma !== mb) ctxd.push(['Months', rango(a.ventanas), rango(b.ventanas)]); else share.push(['Months', rango(a.ventanas)]);
+  return {share, differ, ctxd, common};
+}
+function slotHTML(r, letra){
+  if (!r) return '<div class="card slot"><div class="pickEmpty">Slot ' + letra + ' is empty. In the gallery, press <b>Compare</b> on an ad.</div></div>';
+  const aw = AWARENESS.has(r.ctx.objetivo);
+  return '<div class="card slot" data-id="' + esc(r.id) + '"><div class="media">' + (r.medio === 'video' ? '<video controls muted playsinline preload="metadata" poster="' + esc(mediaSrc(r.primer_frame)) + '" src="' + esc(mediaSrc(r.archivo)) + '"></video>' : '<img src="' + esc(mediaSrc(r.archivo)) + '" alt="">') + '</div>' +
+    '<h4><span class="l">' + letra + '</span><span>' + esc(r.nombres[0] || r.id) + '</span></h4>' +
+    '<div class="small"><b>Opening:</b> ' + esc(r.crudos.opening_copy || '—') + '</div>' +
+    (r.crudos.headline_copy && r.crudos.headline_copy !== r.crudos.opening_copy ? '<div class="small"><b>Headline:</b> ' + esc(r.crudos.headline_copy) + '</div>' : '') +
+    '<div class="small muted" style="margin:4px 0">' + esc(r.ctx.objetivo) + ' · ' + esc(r.ctx.funnel) + ' · ' + esc((CAMP[r.ctx.campana] || {}).nombre || '') + (r.ctx.campanas.length > 1 ? ' (+' + (r.ctx.campanas.length - 1) + ')' : '') + ' · ' + esc(r.medio === 'video' ? 'video file' : 'image file') + ' · Meta: ' + esc(r.medio_original) + (r.solo_thumbnail ? ' · <b>thumbnail only</b>' : '') + '</div>' +
+    (aw ? '<div class="small" style="color:var(--warn)">Classified as awareness by campaign name. CPA alone does not evaluate that objective.</div>' : '') +
+    '<div class="resd">' + mesesTabla(r) + '</div>' +
+    '<div style="margin-top:8px;display:flex;gap:6px"><button class="btn sm" data-open="' + esc(r.id) + '">Open detail</button><button class="btn sm" data-unpick="' + esc(r.id) + '">Remove</button></div></div>';
+}
+function grupos(){
+  const A = filtrar(S.fa, null, false), B = filtrar(S.fb, null, false);
+  const ga = agregar(A), gb = agregar(B);
+  const objs = {}; for (const r of A) for (const o in r.ctx.objetivos_spend) objs[o] = objs[o] || [0, 0], objs[o][0] += r.ctx.objetivos_spend[o]; for (const r of B) for (const o in r.ctx.objetivos_spend) objs[o] = objs[o] || [0, 0], objs[o][1] += r.ctx.objetivos_spend[o];
+  return {a: ga, b: gb, xcpa: ga.cpa && gb.cpa ? ga.cpa / gb.cpa : null, xR: ga.R && gb.R ? ga.R / gb.R : null, objetivos: objs, idsA: A.map(r => r.id), idsB: B.map(r => r.id), rowsA: A, rowsB: B};
+}
+function stripCPA(rows, cls){
+  const con = rows.filter(r => r.conv).map(r => r.cpa), sin = rows.filter(r => !r.conv).length;
+  if (!con.length) return '<div class="small muted">no ads with conversions</div>';
+  const lo = Math.max(1, Math.min(...con) / 1.3), hi = Math.max(...con) * 1.3, W = 460, L = 6;
+  const x = v => L + (Math.log(v) - Math.log(lo)) / (Math.log(hi) - Math.log(lo)) * (W - 2 * L);
+  let s = '<svg viewBox="0 0 ' + W + ' 34" class="strip"><line class="axis" x1="' + L + '" x2="' + (W - L) + '" y1="22" y2="22"/>';
+  for (const t of [2, 5, 10, 20, 50, 100, 200, 500].filter(t => t >= lo && t <= hi)) s += '<text class="tick" x="' + x(t) + '" y="33" text-anchor="middle">$' + t + '</text>';
+  rows.filter(r => r.conv).forEach((r, i) => { s += '<circle class="dot ' + cls + '" data-id="' + esc(r.id) + '" cx="' + x(r.cpa).toFixed(1) + '" cy="' + (14 + ((i * 37) % 5 - 2) * 1.6).toFixed(1) + '" r="4"/>'; });
+  return s + '</svg><div class="small muted">aggregate CPA per ad, log scale' + (sin ? ' · ' + sin + ' with spend and no conversions not drawn' : '') + '</div>';
+}
+function renderCompare(){
+  const el = $('viewCompare');
+  let h = '<div class="modes"><div class="seg"><button data-cmp="ads" class="' + (S.cmp === 'ads' ? 'on' : '') + '">Two ads, side by side</button><button data-cmp="groups" class="' + (S.cmp === 'groups' ? 'on' : '') + '">Two groups (secondary)</button></div>';
+  if (S.cmp === 'ads') {
+    const a = BYID[S.pick[0]], b = BYID[S.pick[1]];
+    h += (a && b ? '<button class="btn sm" data-swap="1">Swap</button>' : '') + '<span style="flex:1"></span>' + (a || b ? '<button class="btn sm primary" data-ref="1">Save as reference</button>' : '') + '</div>';
+    h += '<div class="two">' + slotHTML(a, 'A') + slotHTML(b, 'B') + '</div>';
+    if (a && b) {
+      const c = compararDos(a, b);
+      h += '<div class="sharediff"><div class="card slot"><h4>Share (registered labels)</h4><ul>' + (c.share.map(x => '<li><b>' + esc(x[0]) + ':</b> ' + esc(x[1]) + '</li>').join('') || '<li class="muted">nothing in common</li>') + '</ul></div>' +
+        '<div class="card slot"><h4>Differ (registered labels and context)</h4><ul>' + c.ctxd.map(x => '<li><b>' + esc(x[0]) + ':</b> ' + esc(x[1]) + ' <span class="ab">→</span> ' + esc(x[2]) + '</li>').join('') + c.differ.map(x => '<li><b>' + esc(x[0]) + ':</b> ' + esc(x[1]) + ' <span class="ab">→</span> ' + esc(x[2]) + '</li>').join('') + '</ul></div></div>';
+      h += '<div class="notice"><b>This describes the pieces. It does not identify which difference explains the result.</b> These ads may differ in campaign, offer, period and delivery' + (c.common.length ? ' (months in common: ' + esc(c.common.map(mesS).join(', ')) + ')' : ' (no month in common)') + '. The comparison does not attribute the result to a creative decision.</div>';
+    }
+  } else {
+    h += '<span class="small muted">Edit the filters on the left for</span><div class="seg"><button data-side="a" class="' + (S.side === 'a' ? 'on' : '') + '">Group A</button><button data-side="b" class="' + (S.side === 'b' ? 'on' : '') + '">Group B</button></div><span style="flex:1"></span><button class="btn sm primary" data-refg="1">Save as reference</button></div>';
+    const g = grupos();
+    h += '<div class="two"><div class="card slot"><h4><span class="l">A</span> ' + (chipsActivos(S.fa) || '<span class="muted">no filters: whole dataset</span>') + '</h4>' + stripCPA(g.rowsA, 'a') + '</div><div class="card slot"><h4><span class="l">B</span> ' + (chipsActivos(S.fb) || '<span class="muted">no filters: whole dataset</span>') + '</h4>' + stripCPA(g.rowsB, 'b') + '</div></div>';
+    const D = MAN.definiciones;
+    const row = (lbl, fa, fb, tip) => '<tr><td' + (tip ? ' title="' + esc(tip) + '"' : '') + '>' + lbl + '</td><td>' + fa + '</td><td>' + fb + '</td></tr>';
+    h += '<div class="resd" style="margin-top:12px"><table class="t"><tr><th></th><th>Group A</th><th>Group B</th></tr>' +
+      row('Ads', fmtN(g.a.n), fmtN(g.b.n), D.ads_vs_observaciones) + row('Ad × month observations', fmtN(g.a.obs), fmtN(g.b.obs)) + row('Spend', fmtM(g.a.spend), fmtM(g.b.spend)) + row('Conversions', fmtN(g.a.conv), fmtN(g.b.conv)) +
+      row('With spend and no conversions', fmtN(g.a.sin_conv), fmtN(g.b.sin_conv)) + row('Aggregate CPA (Σspend / Σconv)', fmtCPA(g.a.cpa), fmtCPA(g.b.cpa), D.cpa_conjunto) +
+      row('×CPA (A / B)', '<b>' + fmtX(g.xcpa) + '</b>', '', D.x_cpa) +
+      row('Expected conversions at the account benchmark of each month', fmtN(g.a.conv_esp), fmtN(g.b.conv_esp), D.conv_esperadas) +
+      row('R = observed / expected <span class="muted">(engine-style, not calibrated)</span>', g.a.R != null ? g.a.R.toFixed(2) : '—', g.b.R != null ? g.b.R.toFixed(2) : '—', D.R) + '</table></div>';
+    const objs = Object.entries(g.objetivos).sort((x, y) => (y[1][0] + y[1][1]) - (x[1][0] + x[1][1]));
+    const bars = (i, tot) => objs.map(([o, v]) => '<div class="row"><span title="' + esc(o) + '">' + esc(o) + '</span><div class="bar"><div style="width:' + (tot ? (100 * v[i] / tot).toFixed(1) : 0) + '%"></div></div><span class="muted">' + (tot ? Math.round(100 * v[i] / tot) : 0) + '%</span></div>').join('');
+    h += '<div class="two" style="margin-top:12px"><div class="card slot"><h4>Where A ran · spend by objective (by campaign name)</h4><div class="bars">' + bars(0, g.a.spend) + '</div></div><div class="card slot"><h4>Where B ran · spend by objective</h4><div class="bars">' + bars(1, g.b.spend) + '</div></div></div>';
+    h += '<div class="notice"><b>Descriptive and retrospective: the two groups can run in different campaigns, offers and months.</b> Sharing a filter does not make delivery conditions equivalent. Ads with spend and no conversions stay in the totals. Nothing here is recalculated from the engine; ×CPA and R are computed from the rows shown.</div>';
+  }
+  el.innerHTML = h;
+  el.onclick = e => {
+    const c = e.target.closest('button[data-cmp]'); if (c) { S.cmp = c.dataset.cmp; render(); return; }
+    const s = e.target.closest('button[data-side]'); if (s) { S.side = s.dataset.side; render(); return; }
+    if (e.target.closest('[data-swap]')) { S.pick.reverse(); render(); return; }
+    const o = e.target.closest('button[data-open]'); if (o) { abrir(o.dataset.open); return; }
+    const u = e.target.closest('button[data-unpick]'); if (u) { togglePick(u.dataset.unpick); return; }
+    if (e.target.closest('[data-ref]')) { abrirReferencia(S.pick.slice()); return; }
+    if (e.target.closest('[data-refg]')) { const g = grupos(); abrirReferencia([], {grupos: g}); return; }
+    const d = e.target.closest('.dot[data-id]'); if (d) abrir(d.dataset.id);
+  };
+}
+
+// ── detalle ──────────────────────────────────────────────
+function closeModal(id){ const m = $(id); if (m) m.remove(); }
+function abrir(id, silencioso){
+  const r = BYID[id]; if (!r) return;
+  cerrar(true); S.ad = id;
+  const D = MAN.definiciones;
+  const aw = AWARENESS.has(r.ctx.objetivo);
+  const fam = {}; for (const d of TAX.dimensiones) (fam[d.familia] = fam[d.familia] || []).push(d);
+  const medidaTxt = {duracion: r.duracion_s != null ? 'ffprobe: ' + r.duracion_s + ' s' : 'image: no timeline', aspecto: 'ffprobe: ' + r.w + '×' + r.h, medio: 'file: ' + r.medio, ritmo_medido: r.cortes_por_10s != null ? 'ffmpeg: ' + r.cortes_por_10s + ' cuts / 10 s' : 'image', pista_audio: r.medio === 'video' ? 'ffprobe: has_audio=' + r.has_audio : 'image: no audio'};
+  const lblHTML = d => {
+    const v = r.dims[d.id]; if (v == null) return '';
+    const vals = Array.isArray(v) ? v : [v]; const e = r._ev[d.id];
+    const def = x => (d.valores.find(q => q.id === x) || {}).def || '';
+    return '<div class="lbl' + (r.pendiente_v2.includes(d.id) ? ' pend' : '') + '"><div class="dn" title="' + esc(d.que_mide || '') + (d.nombre_rs && d.nombre_rs !== d.nombre ? ' · RS: ' + d.nombre_rs : '') + (d.motion_internal ? ' · Motion: ' + d.motion_internal : '') + '">' + esc(d.nombre) + (d.calibrar ? ' <span title="interpretive: needs human calibration">*</span>' : '') + '</div><div class="dv">' +
+      vals.map(x => '<button data-lk="' + esc(d.id) + '" data-lv="' + esc(x) + '" title="' + esc(def(x) || 'Others with this label') + '">' + esc(labelDe(d.id, x)) + '</button>').join('') +
+      (e ? '<span class="cf" title="' + esc(D.senal ? 'Model self-declared confidence, not calibrated' : '') + '">' + (e[2] === 'judge' ? 'judge' : e[2] === 'derived' ? 'derived' : 'model') + (e[1] != null ? ' · conf ' + Number(e[1]).toFixed(2) + ' (not calibrated)' : '') + '</span>' : (d.familia === 'medida' ? '<span class="cf">measured</span>' : '')) +
+      (e && e[0] ? '<span class="ev">' + esc(e[0]) + '</span>' : d.familia === 'medida' ? '<span class="ev">' + esc(medidaTxt[d.id] || '') + '</span>' : vals.every(x => x === 'na' || x === 'na_static') ? '<span class="ev muted">not applicable to this piece</span>' : '') + '</div></div>';
+  };
+  const camps = r.ctx.campanas.map(c => '<li>' + esc((CAMP[c[0]] || {}).nombre || c[0]) + ' <span class="muted">· ' + esc((CAMP[c[0]] || {}).programa || '') + ' · ' + esc((CAMP[c[0]] || {}).objetivo || '') + ' · ' + esc(c[3]) + '</span>' + (c[1] != null ? ' <span class="hideable">· ' + fmtM(c[1]) + ' · ' + fmtN(c[2]) + ' conv</span>' : ' · no spend split available') + '</li>').join('');
+  const html = '<div class="overlay" id="detModal"><div class="modal" role="dialog" aria-modal="true"><div class="mhead"><h2 id="detTitle" title="' + esc(r.nombres.join(' · ')) + '">' + esc(r.nombres[0] || r.id) + (r.nombres.length > 1 ? ' <span class="muted">+' + (r.nombres.length - 1) + '</span>' : '') + '</h2>' +
+    '<button class="btn sm" data-act="pick">' + (S.pick.includes(id) ? '✓ In compare' : 'Compare') + '</button><button class="btn sm" data-act="ref">Save as reference</button><button class="btn sm" data-act="link">Copy link</button><button class="x" data-act="close" title="Close (Esc)">×</button></div>' +
+    '<div class="det" data-id="' + esc(id) + '"><div><div class="mediaBox">' + (r.medio === 'video' ? '<video controls autoplay muted playsinline poster="' + esc(mediaSrc(r.primer_frame)) + '" src="' + esc(mediaSrc(r.archivo)) + '"></video>' : '<img src="' + esc(mediaSrc(r.archivo)) + '" alt="">') + '</div>' +
+    '<div class="facts"><span>file <b>' + esc(r.medio) + '</b></span><span title="' + esc(D.medio) + '">Meta medium <b>' + esc(r.medio_original) + '</b></span>' + (r.duracion_s ? '<span>duration <b>' + r.duracion_s + ' s</b></span>' : '') + '<span>' + r.w + '×' + r.h + '</span>' + (r.launch ? '<span>launched <b>' + esc(r.launch) + '</b></span>' : '') + '<span>' + fmtN(r.n_ads) + ' Meta ad' + (r.n_ads === 1 ? '' : 's') + ' in this creative</span><span class="muted" title="creativeAssetId">' + esc(r.id) + '</span></div>' +
+    (r.solo_thumbnail ? '<div class="warnl">Only the video\'s thumbnail is available. Not enough to judge its opening, editing or audio.</div>' : '') + (aw ? '<div class="warnl">Classified as awareness by campaign name. CPA alone does not evaluate that objective.</div>' : '') +
+    (r.medio_original === 'unknown' ? '<div class="small muted" style="margin-top:4px">Meta reports this ad type as CATCH_ALL / effectivePost: the original medium is not declared. The file we have is a ' + esc(r.medio) + '.</div>' : '') +
+    '<section style="margin-top:12px"><h3>Text</h3><dl class="txt">' + [['Opening', r.crudos.opening_copy], ['Hook', r.crudos.hook_copy], ['Headline', r.crudos.headline_copy], ['CTA', r.crudos.cta_all], ['Season', r.crudos.season_value], ['Product (as read)', r.crudos.product_raw], ['Description', r.crudos.descripcion_1_linea]].filter(x => x[1]).map(x => '<dt>' + x[0] + '</dt><dd>' + esc(x[1]) + '</dd>').join('') + '</dl></section>' +
+    (r.transcript ? '<section><h3>Transcript</h3><div class="transcript">' + esc(r.transcript) + '</div></section>' : r.transcript_status ? '<section><h3>Transcript</h3><div class="small muted">not available (' + esc(r.transcript_status) + ')</div></section>' : '') +
+    (r.tags_motion ? '<section><h3>Motion tags (as exported)</h3><div class="mot">' + Object.entries(r.tags_motion).map(([k, v]) => (Array.isArray(v) ? v : [v]).map(x => '<span title="' + esc(k) + '">' + esc(k) + ': ' + esc(x) + '</span>').join('')).join('') + '</div></section>' : '') +
+    '</div><div>' +
+    '<section class="resd"><h3>Result observed · same month against the same month\'s account benchmark</h3>' + mesesTabla(r) + '</section>' +
+    '<section><h3>Where it ran</h3><ul class="small" style="list-style:none;display:grid;gap:3px">' + camps + '</ul><div class="small muted" style="margin-top:4px">Program and objective are classified from the campaign name, not verified against the Meta setup. Dominant: ' + esc(r.ctx.objetivo) + ' · ' + esc(r.ctx.funnel) + (r.ctx.share != null ? ' (' + Math.round(r.ctx.share * 100) + '% of spend in the main campaign)' : '') + '</div></section>' +
+    '<section><h3>Labels · click one to see others with the same label</h3><div class="lblgrid">' + ['visual', 'mensaje', 'audio', 'interpretativa', 'medida'].map(f => (fam[f] || []).map(lblHTML).join('')).join('') + '</div>' +
+    '<div class="small muted" style="margin-top:6px">Labels from ' + esc(r.fuente_dims === 'juez' ? 'the judge (' + MAN.fuente_dims_modelos.judge + ') over ' + MAN.fuente_dims_modelos.gemini : MAN.fuente_dims_modelos.gemini) + ', taxonomy ' + esc(MAN.taxonomia.version) + '. Automatic, not calibrated against humans yet. * = interpretive dimension.' + (r.pendiente_v2.length ? ' Labels migrated from v2, re-tag pending: ' + esc(r.pendiente_v2.map(k => DIM[k] ? DIM[k].nombre : k).join(', ')) + '.' : '') + '</div></section>' +
+    '<section><details class="eng"><summary>Engine numbers (not calibrated · for analysts)</summary><dl>' +
+    '<dt>Weighted benchmark</dt><dd>' + fmtCPA(r.bench_ponderado) + ' <span class="muted">— ' + esc(D.bench_ponderado) + '</span></dd>' +
+    '<dt>Expected conversions</dt><dd>' + fmtN(r.conv_esperadas) + ' <span class="muted">— ' + esc(D.conv_esperadas) + '</span></dd>' +
+    '<dt>R</dt><dd>' + (r.R != null ? r.R.toFixed(2) : '—') + ' <span class="muted">— ' + esc(D.R) + '</span></dd>' +
+    '<dt>Signal</dt><dd>' + (r.senal != null ? r.senal.toFixed(1) : '—') + ' <span class="muted">— ' + esc(D.senal) + '</span></dd>' +
+    '<dt>Effect vs account</dt><dd>' + (r.efecto_vs_cuenta != null ? (r.efecto_vs_cuenta > 0 ? '+' : '') + r.efecto_vs_cuenta.toFixed(1) : '—') + ' <span class="muted">— ' + esc(D.efecto_vs_cuenta) + '</span></dd></dl></details></section>' +
+    '</div></div></div></div>';
+  const root = $('modalRoot'); root.insertAdjacentHTML('beforeend', html);
+  const m = $('detModal');
+  m.addEventListener('click', e => {
+    if (e.target === m) { cerrar(); return; }
+    const a = e.target.closest('[data-act]');
+    if (a) { const act = a.dataset.act; if (act === 'close') cerrar(); else if (act === 'pick') { togglePick(id); a.textContent = S.pick.includes(id) ? '✓ In compare' : 'Compare'; } else if (act === 'ref') abrirReferencia([id]); else if (act === 'link') copiar(location.href, a); return; }
+    const l = e.target.closest('button[data-lk]'); if (l) { S.f = {}; S.f[l.dataset.lk] = new Set([l.dataset.lv]); S.know = l.dataset.lk + ':' + l.dataset.lv; S.q = ''; $('q').value = ''; cerrar(true); setVista('gallery'); }
+  });
+  if (!silencioso) writeURL();
+}
+function cerrar(silencioso){ closeModal('detModal'); S.ad = null; if (!silencioso) writeURL(); }
+function copiar(txt, btn){
+  const done = ok => { if (btn) { const t = btn.textContent; btn.textContent = ok ? 'Copied' : 'Copy failed'; setTimeout(() => { btn.textContent = t; }, 1500); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(() => done(true), () => done(false)); else done(false);
+}
+
+// ── referencia (la salida al brief) ──────────────────────
+function refsLeer(){ try { return JSON.parse(localStorage.getItem(LS_REFS) || '[]'); } catch (e) { return []; } }
+function refsGuardar(list){ try { localStorage.setItem(LS_REFS, JSON.stringify(list)); return true; } catch (e) { return false; } }
+function armarReferencia(ids, notas, extra){
+  const mes = unMes();
+  const ads = ids.map(id => { const r = BYID[id]; const m = mes ? r.meses[mes] : null;
+    return {id, name: r.nombres[0] || null, months: mes ? [mes] : r.ventanas, spend: m ? m.spend : r.spend, conv: m ? m.conv : r.conv, cpa: m ? m.cpa : r.cpa, bench_month: m ? m.bench : null, objective_by_name: r.ctx.objetivo, funnel_by_name: r.ctx.funnel, campaign: (CAMP[r.ctx.campana] || {}).nombre || null, file: r.medio, meta_medium: r.medio_original, thumbnail_only: r.solo_thumbnail}; });
+  const lims = ['Retrospective: observed results, not a prediction for a new piece.', 'Labels are automatic (model), without human calibration yet.', 'Objective and funnel are classified from the campaign name, not verified in Meta.'];
+  if (ads.some(a => AWARENESS.has(a.objective_by_name))) lims.push('At least one ad is classified as awareness: CPA alone does not evaluate that objective.');
+  if (ads.some(a => !a.conv)) lims.push('At least one ad had spend and no conversions in the months consulted.');
+  if (ads.some(a => a.thumbnail_only)) lims.push('At least one video is available only as a thumbnail.');
+  if (!mes && ads.some(a => a.months.length > 1)) lims.push('Aggregate CPA over several months: no single account benchmark applies.');
+  const g = extra && extra.grupos;
+  const ref = {brand: BRAND, created: new Date().toISOString(), ad_ids: ids, ads, months_consulted: mes ? [mes] : (MAN.ventanas || []), month_filter: mes || null, filters: serF(S.f) || null, search: S.q || null,
+    versions: {index_built: MAN.generado, commit: MAN.commit, taxonomy: MAN.taxonomia.version, campaign_mapping: MAN.mapeo_campanas, cards: FICHAS_META ? FICHAS_META.generado : null, source: 'Motion export per ad × month'},
+    groups: g ? {a: {filters: serF(S.fa) || null, ads: g.a.n, spend: g.a.spend, conv: g.a.conv, cpa: g.a.cpa}, b: {filters: serF(S.fb) || null, ads: g.b.n, spend: g.b.spend, conv: g.b.conv, cpa: g.b.cpa}, x_cpa: g.xcpa} : null,
+    take: notas.take || '', dont_assume: notas.dont || 'that its result carries over to the new piece', open_question: notas.open || '', limitations: lims, link: location.origin + location.pathname + (location.search || '')};
+  return ref;
+}
+function bloqueReferencia(ref){
+  const L = ['Reference · ' + ref.brand.charAt(0).toUpperCase() + ref.brand.slice(1) + ' Ad Library · ' + ref.created.slice(0, 10)];
+  for (const a of ref.ads) L.push('- Ad: ' + (a.name || a.id) + ' [' + a.id + '] · ' + rango(a.months) + (a.conv ? ' · CPA ' + fmtCPA(a.cpa) : ' · no conversions') + ' · spend ' + fmtM(a.spend) + ' · ' + fmtN(a.conv) + ' conv' + (a.bench_month ? ' · account benchmark that month ' + fmtCPA(a.bench_month) : '') + ' · ' + a.objective_by_name + ' / ' + a.funnel_by_name + (a.campaign ? ' · ' + a.campaign : ''));
+  if (ref.groups) L.push('- Groups: A [' + (ref.groups.a.filters || 'all') + '] ' + ref.groups.a.ads + ' ads · ' + fmtM(ref.groups.a.spend) + ' · CPA ' + fmtCPA(ref.groups.a.cpa) + '  vs  B [' + (ref.groups.b.filters || 'all') + '] ' + ref.groups.b.ads + ' ads · ' + fmtM(ref.groups.b.spend) + ' · CPA ' + fmtCPA(ref.groups.b.cpa) + ' · ×CPA ' + fmtX(ref.groups.x_cpa) + ' (descriptive; different campaigns/months possible)');
+  L.push('- Scope: ' + (ref.month_filter ? mesL(ref.month_filter) : rango(ref.months_consulted)) + (ref.filters ? ' · filters: ' + ref.filters : '') + (ref.search ? ' · search: “' + ref.search + '”' : ''));
+  L.push('- Take from this piece: ' + (ref.take || '(fill in)'));
+  L.push('- Don\'t assume: ' + ref.dont_assume);
+  L.push('- Open question: ' + (ref.open_question || '(fill in)'));
+  L.push('- Main limitation: ' + ref.limitations[0] + (ref.limitations.length > 1 ? ' ' + ref.limitations.slice(1).join(' ') : ''));
+  L.push('- Source: ' + ref.versions.source + ' · index ' + (ref.versions.index_built || '').slice(0, 10) + (ref.versions.commit ? ' @' + ref.versions.commit : '') + ' · taxonomy ' + ref.versions.taxonomy + ' · campaign mapping ' + ref.versions.campaign_mapping + (ref.versions.cards ? ' · cards ' + ref.versions.cards.slice(0, 10) : ''));
+  L.push('- Link: ' + ref.link);
+  return L.join('\n');
+}
+function abrirReferencia(ids, extra){
+  closeModal('refModal');
+  const draft = armarReferencia(ids, {}, extra);
+  const html = '<div class="overlay" id="refModal"><div class="modal" style="width:min(760px,100%)"><div class="mhead"><h2>Save as reference · what I take to the brief</h2><button class="x" data-act="close">×</button></div><div class="ref">' +
+    '<div class="small muted">' + (ids.length ? ids.length + ' ad' + (ids.length > 1 ? 's' : '') + ' · ' : '') + 'scope ' + esc(draft.month_filter ? mesL(draft.month_filter) : rango(draft.months_consulted)) + (draft.filters ? ' · filters ' + esc(draft.filters) : '') + '. Figures are a snapshot; the source limits travel with the note.</div>' +
+    '<label>Take from this piece (a decision: opening, text, framing…)<textarea id="refTake" placeholder="e.g. the fee reveal in the first second, before any product shot"></textarea></label>' +
+    '<label>Don\'t assume<input id="refDont" value="that its result carries over to the new piece"></label>' +
+    '<label>Open question<textarea id="refOpen" placeholder="e.g. does the same opening hold outside the awareness campaign?"></textarea></label>' +
+    '<pre id="refPreview"></pre>' +
+    '<div class="row"><button class="btn primary" data-act="save">Save (this browser)</button><button class="btn" data-act="copy">Copy block for the brief</button><span class="small muted" id="refMsg"></span></div></div></div></div>';
+  $('modalRoot').insertAdjacentHTML('beforeend', html);
+  const m = $('refModal');
+  const upd = () => { const ref = armarReferencia(ids, {take: $('refTake').value.trim(), dont: $('refDont').value.trim(), open: $('refOpen').value.trim()}, extra); $('refPreview').textContent = bloqueReferencia(ref); return ref; };
+  upd();
+  for (const id of ['refTake', 'refDont', 'refOpen']) $(id).addEventListener('input', upd);
+  m.addEventListener('click', e => {
+    if (e.target === m) { closeModal('refModal'); return; }
+    const a = e.target.closest('[data-act]'); if (!a) return;
+    if (a.dataset.act === 'close') closeModal('refModal');
+    else if (a.dataset.act === 'copy') copiar($('refPreview').textContent, a);
+    else if (a.dataset.act === 'save') { const ref = upd(); const list = refsLeer(); ref.id = 'ref-' + Date.now().toString(36); list.unshift(ref); $('refMsg').textContent = refsGuardar(list) ? 'Saved. Find it under References.' : 'Could not save (storage blocked): copy the block instead.'; $('nRefs').textContent = '(' + refsLeer().length + ')'; }
+  });
+}
+function renderRefs(){
+  const list = refsLeer(); const el = $('viewRefs');
+  el.innerHTML = '<h3 style="font-size:14px;margin-bottom:6px">Saved references <span class="muted small">(this browser only · ' + list.length + ')</span></h3><div class="small muted" style="margin-bottom:8px">A reference is what you take to a brief: ads and months consulted, the figures as they were, your note, and the limits of the source. Open one to restore the view it came from.</div>' +
+    (list.length ? list.map(r => '<div class="item"><div><b>' + esc(r.ads.map(a => a.name || a.id).join(' · ') || (r.groups ? 'Groups A vs B' : '')) + '</b><div class="m">' + esc(r.created.slice(0, 16).replace('T', ' ')) + ' · ' + esc(r.month_filter ? mesL(r.month_filter) : rango(r.months_consulted)) + (r.filters ? ' · ' + esc(r.filters) : '') + '</div><div class="small">' + (r.take ? '<b>Take:</b> ' + esc(r.take) : '<span class="muted">no note</span>') + (r.open_question ? ' · <b>Open:</b> ' + esc(r.open_question) : '') + '</div></div>' +
+      '<div style="display:flex;gap:6px;align-items:flex-start"><button class="btn sm" data-open="' + esc(r.id) + '">Open view</button><button class="btn sm" data-copy="' + esc(r.id) + '">Copy block</button><button class="btn sm" data-del="' + esc(r.id) + '">Delete</button></div></div>').join('') : '<div class="empty">Nothing saved yet. From an ad\'s detail or from Compare, press “Save as reference”.</div>');
+  el.onclick = e => {
+    const b = e.target.closest('button'); if (!b) return; const list = refsLeer();
+    if (b.dataset.open) { const r = list.find(x => x.id === b.dataset.open); if (r) aplicarURL(r.link.split('?')[1] || ''); }
+    else if (b.dataset.copy) { const r = list.find(x => x.id === b.dataset.copy); if (r) copiar(bloqueReferencia(r), b); }
+    else if (b.dataset.del) { refsGuardar(list.filter(x => x.id !== b.dataset.del)); render(); }
+  };
+}
+
+// ── vistas ───────────────────────────────────────────────
+function setVista(v){ S.view = v; render(); window.scrollTo(0, 0); }
+function aplicarURL(qs){   // estado completo desde un query string (deep link, referencia guardada, prueba headless)
+  readURL(qs); $('q').value = S.q; $('sort').value = S.sort; $('hide').checked = S.hide; document.body.classList.toggle('hide', S.hide);
+  render(); if (S.ad) abrir(S.ad, true); else cerrar(true);
+}
+
+// ── API para la prueba headless (tests/explorar_smoke.py) ──
+window.explorarM6 = {
+  estado: () => ({ready: document.body.dataset.ready === '1', n: ROWS.length, view: S.view, q: S.q, sort: S.sort, f: serF(S.f), fa: serF(S.fa), fb: serF(S.fb), side: S.side, cmp: S.cmp, mes: S.mes, ad: S.ad, pick: S.pick.slice(), know: S.know, hide: S.hide,
+    visibles: ordenar(filtrar(S.f)).map(r => r.id), manifest: MAN, url: location.search}),
+  fila: id => BYID[id] || null,
+  setFiltro, limpiar: () => { S.f = {}; S.q = ''; $('q').value = ''; S.know = null; render(); }, setBusqueda: q => { $('q').value = q; $('q').dispatchEvent(new Event('input')); },
+  setVista, setOrden: s => { S.sort = s; $('sort').value = s; render(); }, abrir, cerrar, setMes: m => { S.mes = m; render(); }, pick: id => { if (!S.pick.includes(id)) togglePick(id); }, unpick: id => { if (S.pick.includes(id)) togglePick(id); },
+  setCmpModo: m => { S.cmp = m; render(); }, setLado: s => { S.side = s; render(); }, grupos, distribucion: (m, rows) => distribucion(m, rows), compararDos: (a, b) => compararDos(BYID[a], BYID[b]),
+  referencia: (ids, notas) => { const ref = armarReferencia(ids, notas || {}); return {ref, bloque: bloqueReferencia(ref)}; }, guardarReferencia: (ids, notas) => { const ref = armarReferencia(ids, notas || {}); ref.id = 'ref-' + Date.now().toString(36); const l = refsLeer(); l.unshift(ref); refsGuardar(l); render(); return ref; }, referencias: refsLeer,
+  aplicarURL, urlActual: () => writeURL(), agregar, filtrar: f => filtrar(parF(f), null, false).map(r => r.id),
+};
+
+init();
+</script>
+</body>
+</html>
