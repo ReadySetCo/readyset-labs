@@ -2351,7 +2351,7 @@ function dueMapOf(lanes){const m={}; rmPlan(lanes).forEach(x=>{m[x.d]=x;}); retu
    in one pass. Casting/format/route are decided PER CONCEPT (comp.specs); the lane
    keeps castings[]/formats[] as the de-duplicated union so the sheet's rule
    ("one → pre-fill, several → assign per row") keeps working unchanged. */
-function rmBlank(){return {open:null,f:'',ctp:[],segment:[],angle:[],funnel:[],phase:[],hypothesis:'',concepts:1,variants:'',notes:'',specs:[{casting:'',format:'',route:''}],delivery:''};}
+function rmBlank(){return {open:null,f:'',ctp:[],segment:[],angle:[],funnel:[],phase:[],hypothesis:'',concepts:1,variants:'',notes:'',specs:[{casting:'',format:'',route:'',ref:''}],delivery:''};}
 const STEPS=['ctp','segment','angle','funnel','phase'];
 const STEP_LBL={ctp:'CTP',segment:'Segment',angle:'Angle',funnel:'Funnel',phase:'Phase'};
 const OPTS={ctp:()=>B.layer.ctps.map(c=>c.name),segment:()=>B.layer.segments.map(s=>s.name),angle:()=>B.layer.angles.map(a=>a.name),funnel:()=>FUNNELS,phase:()=>PHASES};
@@ -2370,13 +2370,20 @@ function setF(v){comp.f=v; const el=document.getElementById('chipbox-angle'); if
 function setConcepts(n){
   n=Math.max(1,+n||1); comp.concepts=n;
   const sp=comp.specs||[];
-  while(sp.length<n)sp.push({casting:'',format:'',route:''});
+  while(sp.length<n)sp.push({casting:'',format:'',route:'',ref:''});
   comp.specs=sp.slice(0,n); render();
 }
-function setSpec(i,k,v){const sp=(comp.specs[i]=comp.specs[i]||{casting:'',format:'',route:''});
+function setSpec(i,k,v){const sp=(comp.specs[i]=comp.specs[i]||{casting:'',format:'',route:'',ref:''});
   sp[k]=v;
   if(k==='format'&&!sp.route&&ROUTE_DEFAULT[v])sp.route=ROUTE_DEFAULT[v];
   render();}
+  /* the reference link is free text — stored WITHOUT a re-render so the field keeps focus while it is typed */
+  function setSpecRef(i,v){(comp.specs[i]=comp.specs[i]||{casting:'',format:'',route:'',ref:''}).ref=v;}
+  /* a reference is free text (a link, a slide, a note) — linkify only what is actually a link */
+  function refHtml(v,label){const s=(v||'').trim(); if(!s)return '';
+  return /^https?:\/\//i.test(s)
+  ?'<a href="'+esc(s)+'" target="_blank" rel="noopener" title="'+esc(s)+'" style="color:var(--accent)">🔗 '+esc(label||'reference')+'</a>'
+  :'🔗 '+esc(s.length>40?s.slice(0,40)+'…':s);}
 function specAll(k){const v=(comp.specs[0]||{})[k]||''; comp.specs.forEach(x=>x[k]=v); render();}
 /* the composer's casting menu: the union of the selected segments' talent menus */
 function castMenu(){const out=[];
@@ -2415,8 +2422,9 @@ function addLane(){
   const made=cs.map(c=>{
     const menu=((B.layer.segments.find(x=>x.name===c.segment)||{}).casting)||[];
     /* a casting from another segment's menu cannot travel to this lane — dropped, not mis-assigned */
+    /* the reference link is NOT segment-bound the way casting is — it is inspiration, so it reaches every lane */
     const specs=(comp.specs||[]).slice(0,+comp.concepts||1)
-      .map(x=>({casting:menu.includes(x.casting)?x.casting:'',format:x.format||'',route:x.route||''}));
+      .map(x=>({casting:menu.includes(x.casting)?x.casting:'',format:x.format||'',route:x.route||'',ref:(x.ref||'').trim()}));
     return {...c,hypothesis:comp.hypothesis,concepts:+comp.concepts||1,variants:comp.variants?+comp.variants:'',
       notes:comp.notes,conceptSpecs:specs,
       castings:[...new Set(specs.map(x=>x.casting).filter(Boolean))],
@@ -2428,7 +2436,7 @@ function addLane(){
 function editLane(i){const l=B.draft.lanes[i];
   const n=Math.max(1,+l.concepts||1);
   const specs=(l.conceptSpecs||[]).map(x=>({...x}));
-  while(specs.length<n)specs.push({casting:(l.castings||[])[0]||'',format:(l.formats||[])[0]||'',route:''});
+  while(specs.length<n)specs.push({casting:(l.castings||[])[0]||'',format:(l.formats||[])[0]||'',route:'',ref:''});
   comp={...rmBlank(),ctp:[l.ctp],segment:[l.segment],angle:[l.angle],funnel:[l.funnel],phase:[l.phase],
     hypothesis:l.hypothesis,concepts:n,variants:l.variants,notes:l.notes,delivery:l.delivery||'',
     specs:specs.slice(0,n),_edit:i};
@@ -2632,7 +2640,7 @@ function rmConcepts(lanes){
         d:+l.delivery||0,cNum:(nums[i]||[])[k]||0,
         casting:sp.casting||((l.castings||[]).length===1?l.castings[0]:''),
         format:sp.format||((l.formats||[]).length===1?l.formats[0]:''),
-        route:sp.route||'',menu:m,
+        route:sp.route||'',menu:m,ref:sp.ref||'',
         due:g&&g.due?g.due:null,
         start:(g&&g.due&&m&&m.bd)?addDays(g.due,-(bdToCal(m.bd)-1)):null});
     }
@@ -2648,7 +2656,7 @@ function rmSheetRows(lanes){
       d:'D'+String(c.d).padStart(3,'0'),c:'C'+String(c.cNum).padStart(3,'0'),
       deliveryDue:c.due?fmtDateMDY(ymdOf(c.due)):'',strategist:route.strategist||'Evan',
       variant:c.lane.variants?'V'+String(v).padStart(2,'0'):'',newIter:'NEW',
-      format:c.format,talent:c.casting,hypothesis:cleanCell(c.lane.hypothesis),
+      format:c.format,talent:c.casting,visualRef:c.ref,hypothesis:cleanCell(c.lane.hypothesis),
       product:B.layer.product.name,
       ctp:(personaOf(c.lane.ctp)||{}).tag||c.lane.ctp,segment:c.lane.segment,angle:c.lane.angle,
       funnel:c.lane.funnel,phase:c.lane.phase});
@@ -2688,7 +2696,7 @@ function briefPayload(lanes){
         segment:{name:c.lane.segment,age:sg.age||null,castingMenu:sg.casting||[]},
         angle:c.lane.angle,funnel:c.lane.funnel,phase:c.lane.phase,
         hypothesis:c.lane.hypothesis,notes:c.lane.notes||'',
-        casting:c.casting||null,format:c.format||null,
+        casting:c.casting||null,format:c.format||null,visualReference:c.ref||null,
         production:c.menu?{route:c.menu.id,name:c.menu.name,timeline:c.menu.tl,team:c.menu.team,baseCost:c.menu.cost}:null};
     })};
 }
@@ -2713,7 +2721,8 @@ function roadmapMD(lanes){
       (l.conceptSpecs&&l.conceptSpecs.length?l.conceptSpecs:Array.from({length:Math.max(1,+l.concepts||1)},()=>({}))).slice(0,Math.max(1,+l.concepts||1)).forEach((sp,k)=>{
         const m=menuOf(sp.route);
         L.push('- **C'+String(cn[k]||0).padStart(3,'0')+'**'+(l.variants?' ×'+l.variants+' variants':'')
-          +' — '+(sp.format||'format TBD')+(sp.casting?' · '+sp.casting:'')+(m?' · '+m.name+' ('+m.tl+')':''));
+          +' — '+(sp.format||'format TBD')+(sp.casting?' · '+sp.casting:'')+(m?' · '+m.name+' ('+m.tl+')':'')
+          +(sp.ref?' · reference: '+sp.ref:''));
       });
       if(l.notes)L.push('','_Notes: '+l.notes+'_');
     });
@@ -2849,10 +2858,10 @@ const RM_EXPORTS={
     blurb:'One row per concept with its Menu route, team, business days, base cost, due date and the date it has to start. For PM / Monday. Menu figures are quoted turnarounds, not measured cycle time.',
     build:l=>({cols:PROD_COLS,keys:PROD_KEYS,rows:prodRows(l)})},
   briefs:{icon:'📝',name:'Brief payload',ext:'json',
-    blurb:'One object per concept with the strategy resolved — persona insight and clothing persona, segment age and casting menu, angle, funnel, phase, hypothesis, notes, casting, format and production route.',
+    blurb:'One object per concept with the strategy resolved — persona insight and clothing persona, segment age and casting menu, angle, funnel, phase, hypothesis, notes, casting, format, production route and the visual reference link.',
     build:l=>({text:JSON.stringify(briefPayload(l),null,1)})},
   doc:{icon:'📄',name:'Readable roadmap',ext:'md',
-    blurb:'Markdown: the thesis, the deliveries with their dates, every swimlane as its sentence and hypothesis, and the concepts with casting/format/route. For Slack, Notion or the client.',
+    blurb:'Markdown: the thesis, the deliveries with their dates, every swimlane as its sentence and hypothesis, and the concepts with casting/format/route and any reference link. For Slack, Notion or the client.',
     build:l=>({text:roadmapMD(l)})},
   onepager:{icon:'🖼',name:'One-pager',ext:'html',html:true,
     blurb:'A standalone, printable page: the thesis, the numbers, the network and every test. No working material. For a review, a deck or the client — print it to a single landscape sheet.',
@@ -2977,7 +2986,7 @@ function vBuilder(){
           <span style="margin-left:auto;font-size:11px;color:var(--ink3)">C${String((nums[i]||[0])[0]).padStart(3,'0')}${l.concepts>1?`–C${String((nums[i]||[0]).slice(-1)[0]).padStart(3,'0')}`:''}</span></div>
         <div class="lt">${esc(l.ctp)} · ${esc(l.segment)} · <b>${esc(l.angle)}</b> · ${esc(l.funnel)} · ${esc(l.phase)}</div>
         <div class="lm">${l.concepts} concept(s)${l.variants?` × ${l.variants} variant(s)`:''} — ${esc((l.hypothesis||'').slice(0,80))}</div>
-        ${(l.conceptSpecs||[]).some(x=>x.casting||x.format)?`<div class="lm">${(l.conceptSpecs||[]).map((x,k)=>`C${String((nums[i]||[])[k]||0).padStart(3,'0')}: ${esc(x.format||'—')}${x.casting?' · 🎭 '+esc(x.casting):''}`).join(' &nbsp;|&nbsp; ')}</div>`
+        ${(l.conceptSpecs||[]).some(x=>x.casting||x.format||x.ref)?`<div class="lm">${(l.conceptSpecs||[]).map((x,k)=>`C${String((nums[i]||[])[k]||0).padStart(3,'0')}: ${esc(x.format||'—')}${x.casting?' · 🎭 '+esc(x.casting):''}${x.ref?' · '+refHtml(x.ref):''}`).join(' &nbsp;|&nbsp; ')}</div>`
           :(l.castings||[]).length||(l.formats||[]).length?`<div class="lm">${(l.castings||[]).length?`🎭 ${esc(l.castings.join(', '))}`:''}${(l.castings||[]).length&&(l.formats||[]).length?' · ':''}${(l.formats||[]).length?`🎞 ${esc(l.formats.join('/'))}`:''}</div>`:''}
         <div style="margin-top:6px"><button class="btn tiny" onclick="editLane(${i})">✎ Edit</button>
           <button class="btn tiny" onclick="dupLane(${i})" title="Same test, next delivery — a line carries one delivery, so running it again means a second line.">⧉ Duplicate</button>
@@ -3002,9 +3011,9 @@ function vBuilder(){
         const c0=(()=>{let c=+RM().conceptStart||1;const ls=(B.draft||{}).lanes||[];
           ls.forEach(l=>{if((+l.delivery||9999)<(+comp.delivery||nextDelivery()))c+=Math.max(1,+l.concepts||1);});return c;})();
         const opt=(v,sv)=>`<option value="${esc(v)}" ${sv===v?'selected':''}>${esc(v)}</option>`;
-        return `<div class="f" style="margin-top:12px"><label>Suggested casting &amp; format — per concept</label>
-        <table class="k specs"><tr><th style="width:56px">Concept</th><th>Suggested casting</th><th style="width:88px">Format</th><th style="width:172px">Production route <span class="hint" style="text-transform:none;letter-spacing:0">(Menu — quoted, not measured)</span></th></tr>
-        ${Array.from({length:n},(_,i)=>{const sp=specs[i]||{casting:'',format:'',route:''};return `<tr>
+        return `<div class="f" style="margin-top:12px"><label>Suggested casting, format &amp; reference — per concept</label>
+        <table class="k specs"><tr><th style="width:56px">Concept</th><th>Suggested casting</th><th style="width:88px">Format</th><th style="width:172px">Production route <span class="hint" style="text-transform:none;letter-spacing:0">(Menu — quoted, not measured)</span></th><th style="width:180px">Reference link <span class="hint" style="text-transform:none;letter-spacing:0">(optional — an ad to use as inspo)</span></th></tr>
+        ${Array.from({length:n},(_,i)=>{const sp=specs[i]||{casting:'',format:'',route:'',ref:''};return `<tr>
           <td><b>C${String(c0+i).padStart(3,'0')}</b>${cs.length>1?'<span class="hint" style="display:block">×'+cs.length+' lanes</span>':''}</td>
           <td><select onchange="setSpec(${i},'casting',this.value)">
             <option value="">— pick in the sheet —</option>
@@ -3014,10 +3023,11 @@ function vBuilder(){
           <td><select onchange="setSpec(${i},'route',this.value)">
             <option value="">— not scheduled —</option>
             ${MENU.map(m=>`<option value="${m.id}" ${sp.route===m.id?'selected':''}>${esc(m.name)} · ${m.bd?m.bd+'d':'TBD'}${m.cost?' · $'+m.cost:''}</option>`).join('')}
-          </select>${sp.route&&menuOf(sp.route)?`<div class="hint" style="margin-top:2px">${esc(menuOf(sp.route).tl)} · ${esc(menuOf(sp.route).team)}</div>`:''}</td></tr>`;}).join('')}
+          </select>${sp.route&&menuOf(sp.route)?`<div class="hint" style="margin-top:2px">${esc(menuOf(sp.route).tl)} · ${esc(menuOf(sp.route).team)}</div>`:''}</td>
+          <td><input value="${esc(sp.ref||'')}" placeholder="https://… — the ad you are iterating on" title="Optional. Lands in the Strategy Sheet's Visual Reference column and the brief's Visual reference field." oninput="setSpecRef(${i},this.value)" style="width:100%;border:1px solid var(--line2);background:var(--card2);color:var(--ink);border-radius:7px;font:inherit;font-size:12px;padding:4px 6px"></td></tr>`;}).join('')}
         </table>
-        ${n>1?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn tiny" onclick="specAll('casting')">Apply C1's casting to all</button><button class="btn tiny" onclick="specAll('format')">Apply C1's format to all</button><button class="btn tiny" onclick="specAll('route')">Apply C1's route to all</button></div>`:''}
-        <div class="hint" style="margin-top:5px">The <b>production route</b> is what the Creative Menu costs and times — an ad format doesn’t decide it (a VID can be a 3-day Editor Ad or a Creator bundle), so VID is left blank until you pick. Casting is who’s on camera, NOT a test variable — to TEST one, promote it to a segment (↑ in the Strategy Layer). Leaving a row blank hands that choice to the Strategy Sheet.${menu.length>1?' The menu is the union of the '+menu.length+' segments you picked; a casting that doesn’t belong to a lane’s own segment is dropped from that lane.':''}</div></div>`;})()}
+        ${n>1?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn tiny" onclick="specAll('casting')">Apply C1's casting to all</button><button class="btn tiny" onclick="specAll('format')">Apply C1's format to all</button><button class="btn tiny" onclick="specAll('route')">Apply C1's route to all</button><button class="btn tiny" onclick="specAll('ref')">Apply C1's reference to all</button></div>`:''}
+        <div class="hint" style="margin-top:5px">The <b>production route</b> is what the Creative Menu costs and times — an ad format doesn’t decide it (a VID can be a 3-day Editor Ad or a Creator bundle), so VID is left blank until you pick. Casting is who’s on camera, NOT a test variable — to TEST one, promote it to a segment (↑ in the Strategy Layer). Leaving a row blank hands that choice to the Strategy Sheet. The <b>reference link</b> is optional and is not a test variable either — it is the whole ad you want to use as inspiration when replaying the same dimensions is not enough on its own. Unlike casting it is never dropped, so it reaches every composed lane, and it lands in the Strategy Sheet’s <b>Visual Reference</b> column and the brief’s <b>Visual reference</b> field.${menu.length>1?' The menu is the union of the '+menu.length+' segments you picked; a casting that doesn’t belong to a lane’s own segment is dropped from that lane.':''}</div></div>`;})()}
       <div class="f" style="margin-top:10px"><label>Notes to the creative team</label>
         <textarea oninput="comp.notes=this.value">${esc(comp.notes)}</textarea></div>
       <button class="btn primary" style="margin-top:12px" onclick="addLane()">＋ ${comp._edit!==undefined?'Save swimlane':'Add '+(cs.length>1?cs.length+' swimlanes':'swimlane')}</button>`
@@ -3071,7 +3081,7 @@ function vRoadmapView(){
   ${R.lanes.map((l,i)=>`<div class="lane" style="border-left-color:${TUBE_C(i)}" onmouseenter="hlLane(${i})" onmouseleave="hlLane(null)"><div class="lt"><b>${l.delivery?'D'+String(l.delivery).padStart(3,'0'):'Swimlane '+(i+1)}:</b>${varAlert(l)}
     Test <b>${esc(l.ctp)}</b> in <b>${esc(l.segment)}</b>, through the <b>${esc(l.angle)}</b> angle, at <b>${esc(l.funnel)}</b> as an <b>${esc(l.phase)}</b> play.</div>
     <div class="lm"><b>Hypothesis:</b> ${esc(l.hypothesis)}</div>
-    ${(l.conceptSpecs||[]).some(x=>x.casting||x.format)?`<div class="lm">${(l.conceptSpecs||[]).map((x,k)=>`C${String((l.conceptNums||[])[k]||0).padStart(3,'0')}: ${esc(x.format||'—')}${x.casting?' · 🎭 '+esc(x.casting):''}`).join(' &nbsp;|&nbsp; ')}</div>`:''}
+    ${(l.conceptSpecs||[]).some(x=>x.casting||x.format||x.ref)?`<div class="lm">${(l.conceptSpecs||[]).map((x,k)=>`C${String((l.conceptNums||[])[k]||0).padStart(3,'0')}: ${esc(x.format||'—')}${x.casting?' · 🎭 '+esc(x.casting):''}${x.ref?' · '+refHtml(x.ref):''}`).join(' &nbsp;|&nbsp; ')}</div>`:''}
     <div class="lm">${l.concepts} concept(s)${l.variants?` × ${l.variants} variant(s)`:''}${(l.castings||[]).length?` · <b>🎭</b> ${esc(l.castings.join(', '))}`:''}${(l.formats||[]).length?` · <b>🎞</b> ${esc(l.formats.join('/'))}`:''}${l.notes?` · <b>Notes:</b> ${esc(l.notes)}`:''}</div></div>`).join('')}
   ${vTube(R.lanes)}${vRmExport()}`;
 }
@@ -3130,7 +3140,8 @@ function conceptList(){
       out.push({id:`L${li}C${k}`,d:'',c:`Concept ${k} of ${l.concepts} · Swimlane ${li+1}`,variants:+l.variants||0,
         ctp:l.ctp,segment:l.segment,angle:l.angle,funnel:l.funnel,phase:l.phase,hypothesis:l.hypothesis,
         talent:(l.castings||[]).length===1?l.castings[0]:'',format:(l.formats||[]).length===1?l.formats[0]:'',
-        castings:l.castings||[],formats:l.formats||[],notes:l.notes,route:((l.conceptSpecs||[])[k-1]||{}).route||''});});
+        castings:l.castings||[],formats:l.formats||[],notes:l.notes,route:((l.conceptSpecs||[])[k-1]||{}).route||'',
+        visualRef:((l.conceptSpecs||[])[k-1]||{}).ref||''});});
   }
   /* briefs started from scratch — everything the roadmap would provide is picked inside the brief, from the Strategy Layer */
   (B.customBriefs||[]).forEach(cb=>out.push({...cb,custom:true,
