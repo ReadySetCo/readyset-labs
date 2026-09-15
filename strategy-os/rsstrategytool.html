@@ -844,12 +844,14 @@ function blankBrand(def){
   return {code:def.code,name:def.name,
     layer:def.seed?JSON.parse(JSON.stringify(def.seed)):{product:{name:'',brand:def.name,description:'',category:''},valueProps:[],diffs:[],ctps:[],segments:[],angles:[],cds:{feel:['','',''],never:['','',''],custom:''}},
     roadmap:null, draft:null, sheet:null, briefsMade:false,
+    pls:null, /* corrida del motor PLS (segundo camino de ingesta — ver ══ PLS engine runs ══) */
     perf:{reports:def.perf?[JSON.parse(JSON.stringify(PERF_SEED.report))]:[], rows:def.perf?PERF_SEED.rows.slice():[], unparsed:def.perf?PERF_SEED.unparsed.slice():[]}};
 }
 function loadBrand(code){
   const def=BRAND_DEFS.find(b=>b.code===code);
   try{const s=JSON.parse(lsGet('sos-v1-'+code)||'null'); if(s){B=s;
     if(!B.layer.cds)B.layer.cds={feel:['','',''],never:['','',''],custom:''};
+    if(B.pls===undefined)B.pls=null; /* estado guardado antes del merge PLS */
     /* a previously-saved EMPTY layer must not shadow a newly ingested seed */
     const L=B.layer, empty=!L.product.name&&!L.ctps.length&&!L.segments.length&&!L.angles.length;
     if(empty&&def.seed){B.layer=JSON.parse(JSON.stringify(def.seed)); save();}
@@ -1198,6 +1200,7 @@ function vLayer(){
       <button class="btn primary" onclick="startRoadmap()">🗺️ Generate a Creative Roadmap</button>
     </div></div>
   ${layerComplete()?'':`<div class="alert warn">🟡 <span><b>Incomplete.</b> To be complete it needs: the Product info (with value props & differentiators) and at least 1 CTP, 1 Segment and 1 Angle. Add as many as you need — you can keep completing later.</span></div>`}
+  ${plsRun()&&plsRun().run_type!=='execution_analysis'?`<div class="alert" style="background:var(--card2)">⟐ <span>Al lado de cada <b>Validation</b> está lo que el motor PLS ya sabe de esa dimensión: <b>efecto</b> (cómo rinde contra el promedio de la cuenta — 0 = igual al promedio) y <b>soporte</b> (cuánta prueba real hay detrás, solo de evidencia). Sin píldora = el motor todavía no vio esa dimensión corriendo. <b>El selector sigue siendo tuyo: el motor sugiere, no decide.</b></span></div>`:''}
   <div class="card"><div class="card-h"><h3>Product</h3></div><div class="card-b">
     <div class="grid2">
       <div class="f"><label>Product / Service Name</label><input data-path="layer.product.name" data-dirty="1" value="${esc(L.product.name)}"></div>
@@ -1217,7 +1220,7 @@ function vLayer(){
       ${hasTag?`<td><input data-path="layer.ctps.${i}.tag" data-dirty="1" value="${esc(c.tag||'')}" style="font-family:ui-monospace,monospace; font-size:12px" placeholder="p-…"></td>`:''}
       <td><textarea data-path="layer.ctps.${i}.insight" data-dirty="1" rows="2">${esc(c.insight)}</textarea></td>
       ${hasTag?`<td><input value="${esc((c.clothingPersona||[]).join(' · '))}" placeholder="e.g. Refined · Coastal" oninput="B.layer.ctps[${i}].clothingPersona=this.value.split('·').map(s=>s.trim()).filter(Boolean);save();markDirty()"></td>`:''}
-      <td>${valSel(`layer.ctps.${i}.val`,c.val)}</td>
+      <td>${valSel(`layer.ctps.${i}.val`,c.val)}${plsEvBadge('ctp',c.name)}</td>
       <td><input data-path="layer.ctps.${i}.src" data-dirty="1" value="${esc(c.src)}"></td>
       <td style="width:26px"><button class="rowdel" onclick="delRowL('ctp',${i})">✕</button></td></tr>`).join('')}</tbody></table>
     <button class="btn tiny" style="margin-top:8px" onclick="addRowL('ctp')">＋ Add ${hasTag?'persona':'CTP'}</button></div></div>`;})()}
@@ -1233,7 +1236,7 @@ function vLayer(){
           <a href="#" title="Promote to segment (needs a hypothesis + a control)" style="text-decoration:none; margin-left:4px" onclick="promoteCast(${i},${j});return false">↑</a>
           <a href="#" title="Remove" style="text-decoration:none; color:var(--bad)" onclick="delCast(${i},${j});return false">✕</a></span>`).join('')}
         <a href="#" class="hint" style="align-self:center" onclick="addCast(${i});return false">＋</a></div></td>
-      <td>${valSel(`layer.segments.${i}.val`,s.val)}</td>
+      <td>${valSel(`layer.segments.${i}.val`,s.val)}${plsEvBadge('segment',s.name)}</td>
       <td><input data-path="layer.segments.${i}.src" data-dirty="1" value="${esc(s.src)}"></td>
       <td><input data-path="layer.segments.${i}.beh" data-dirty="1" value="${esc(s.beh)}" placeholder="notes"></td>
       <td style="width:44px; white-space:nowrap"><button class="rowdel" title="Demote into another segment's casting" onclick="demoteSeg(${i})">⤵</button><button class="rowdel" onclick="delRowL('seg',${i})">✕</button></td></tr>`).join('')}</tbody></table>
@@ -1242,7 +1245,7 @@ function vLayer(){
     <div class="card-b"><table class="et"><thead><tr><th style="width:34%">Angle</th><th style="width:110px">Validation</th><th>Source</th><th></th></tr></thead><tbody>
     ${L.angles.map((a,i)=>`<tr>
       <td><input data-path="layer.angles.${i}.name" data-dirty="1" value="${esc(a.name)}"></td>
-      <td>${valSel(`layer.angles.${i}.val`,a.val)}</td>
+      <td>${valSel(`layer.angles.${i}.val`,a.val)}${plsEvBadge('angle',a.name)}</td>
       <td><input data-path="layer.angles.${i}.src" data-dirty="1" value="${esc(a.src)}"></td>
       <td style="width:26px"><button class="rowdel" onclick="delRowL('ang',${i})">✕</button></td></tr>`).join('')}</tbody></table>
     <button class="btn tiny" style="margin-top:8px" onclick="addRowL('ang')">＋ Add angle</button></div></div>
@@ -1311,6 +1314,443 @@ function benchCPA(scope){
   const sc=scope||perfScope();
   return sc.acctPu?sc.acctSp/sc.acctPu:0;
 }
+
+function plsNorm(s){return String(s||'').toLowerCase().replace(/\s+/g,' ').replace(/\s*\/\s*/g,'/').trim()}
+
+/* ══════════ PLS engine runs — segundo camino de ingesta ══════════
+   El modelo de arriba (D+C) asume el export de Looker y la Strategy Sheet como tabla de join.
+   Una corrida de Motion no tiene D+C: llega ya taggeada por ad y agregada en combos, con
+   effect y confianza calculados por el bridge (bridge/motion_to_tagged.py →
+   audience_splitter.py). Por eso aterriza en B.pls y acá SOLO SE LEE: la shell muestra
+   evidencia que no calculó. El motor vive en el bridge hasta el paso 2 del merge.
+
+   Diferencia que importa contra el heat map de CPA de arriba: el CPA promedio de un combo
+   se lo lleva el creativo donde Meta puso la plata. El `effect` trata a cada creativo como
+   evidencia y NO pondera por spend — por eso los dos mapas pueden contradecirse, y ahí
+   está el valor.
+
+   14-sep: para corridas M6 (`execution_analysis`) la vista es heatmap + ficha por celda + pares + selector de
+   estrato (ver el sub-bloque «M6 en el OS» más abajo y docs/m6-en-el-os.md). */
+const plsRun=()=>(B&&B.pls&&B.pls.tested&&B.pls.tested.length)?B.pls:null;
+const plsFmt$=n=>'$'+Math.round(n||0).toLocaleString();
+function plsEvidence(kind,name){
+  /* toda la evidencia que el motor tiene sobre UNA dimensión del Layer (un CTP o un angle) */
+  const R=plsRun(); if(!R||!name)return null;
+  if(R.run_type==='execution_analysis')return null; /* M6 describe ejecuciones, no valida CTPs ni ángulos */
+  const key=plsNorm(name);
+  /* segment es multivaluado en una corrida ("Amazon Prime members / Families"): un combo
+     cuenta como evidencia del segmento si lo contiene, no solo si es idéntico */
+  const hits=kind==='segment'
+    ? R.tested.filter(t=>plsNorm(t.segment).split('/').map(s=>s.trim()).includes(key))
+    : R.tested.filter(t=>plsNorm(t[kind])===key);
+  if(!hits.length)return null;
+  const spend=hits.reduce((a,t)=>a+(t.spend||0),0);
+  const conv=hits.reduce((a,t)=>a+(t.conv||0),0);
+  /* effect y conf son por combo: se promedian ponderando por la confianza de cada uno,
+     que es exactamente "cuánta prueba real hay detrás". Un combo con conf 0 no vota. */
+  const w=hits.reduce((a,t)=>a+(t.conf||0),0);
+  return {n:hits.length, spend, conv, cpa:conv?spend/conv:null,
+    effect:w?hits.reduce((a,t)=>a+(t.effect||0)*(t.conf||0),0)/w:null,
+    /* la confianza NO se suma entre combos: dos combos flojos no hacen uno fuerte.
+       Se toma la del combo mejor probado — es "cuánta prueba hay en el mejor caso". */
+    conf:Math.max(...hits.map(t=>t.conf||0)),
+    combos:hits};
+}
+function plsEvBadge(kind,name){
+  /* la píldora que se muestra al lado del selector de Validation en el Strategy Layer */
+  const e=plsEvidence(kind,name); if(!e)return '';
+  const col=e.effect==null?'var(--ink3)':e.effect>=6?'var(--good)':e.effect<=-6?'var(--bad)':'var(--ink2)';
+  const sign=e.effect==null?'sin señal':(e.effect>0?'+':'')+e.effect.toFixed(0);
+  return `<span title="El motor PLS vio ${e.n} combinación(es) con esta dimensión · ${plsFmt$(e.spend)} de spend · CPA ${e.cpa?plsFmt$(e.cpa):'—'} · efecto ${sign} · soporte ${e.conf}%&#10;&#10;Efecto = qué tan bien rinde contra el promedio de la cuenta (0 = igual). Confianza = cuánta prueba real hay detrás; sale solo de evidencia, nunca del prior."
+    style="display:inline-block; margin-left:6px; font-size:10.5px; font-weight:700; color:${col}; white-space:nowrap">
+    ⟐ ${sign} · ${e.conf}%</span>`;
+}
+function plsStatusColor(s){
+  return {'Winner':'var(--good)','Promising':'var(--good)','Weak':'var(--bad)',
+          'Contradictory':'var(--warn)','Insufficient evidence':'var(--ink3)'}[s]||'var(--ink2)';
+}
+/* ── M6 en el OS (14-sep): heatmap dimensión × valor, ficha por celda, pares y estratos ──
+   Pedido de Felipe (reunión 10-sep): un heatmap de dimensiones filtrable dentro de la strategy tool. Plan de Astra
+   (docs/astra-pls-desde-cero.md): cada aprendizaje con su evidencia y sus advertencias, no como un número suelto.
+   Todo vive en este bloque: estado de la vista en PLSUI (no persiste), la corrida en pantalla en B.pls, las otras
+   corridas de la marca en B.plsRuns (estratos: toda la cuenta / video / imagen…; persisten sin obs[]), y las fichas
+   (bridge/dimensiones/fichas.py → data/<marca>/fichas-dimensiones.json) en una clave propia de localStorage
+   (`sos-v1-<code>-fichas`) para que un fallo de cuota no rompa el save() de la marca. El CSS .pls-* se inyecta
+   desde plsCss(): nada fuera del bloque (docs/merge-strategy-os.md). Qué muestra y qué NO afirma: docs/m6-en-el-os.md. */
+const PLS_FAMILIAS=[['medida','Measured'],['visual','Visual'],['audio','Audio'],['mensaje','Message'],['interpretativa','Interpretive']];
+const PLS_GRIS=10;      /* support below this → grey cell: the colour cannot be read */
+const PLS_ESCALA=40;    /* effect ±40 = full colour; fixed across brands and strata */
+const PLS_PARES_MAX=40; /* pairs shown before "show all" */
+const PLSUI={fam:'',estado:'',minSop:0,minCre:2,q:'',hideV2:false,ancho:false,ficha:null,par:'',parQ:'',parMinCre:3,parTodos:false,fichas:{}};
+function plsCss(){
+  if(document.getElementById('pls-css'))return;
+  const st=document.createElement('style'); st.id='pls-css'; st.textContent=`
+.pls-h4{margin:16px 0 6px; font-size:14px; font-weight:800}
+.pls-sel{margin-left:auto; min-width:180px; border:1px solid var(--line2); background:var(--card2); color:var(--ink); border-radius:8px; padding:5px 8px; font:inherit; font-size:12.5px}
+.pls-filters{display:flex; flex-wrap:wrap; gap:8px 14px; align-items:center; font-size:12px; color:var(--ink2); margin:6px 0 8px; padding:8px 10px; border:1px solid var(--line); border-radius:9px; background:var(--card2)}
+.pls-filters label{display:inline-flex; align-items:center; gap:6px; white-space:nowrap}
+.pls-filters select,.pls-filters input[type=search],.pls-filters input[type=number]{border:1px solid var(--line2); background:var(--card); color:var(--ink); border-radius:7px; padding:3px 7px; font:inherit; font-size:12px}
+.pls-filters input[type=search]{min-width:150px}
+.pls-filters input[type=range]{width:110px}
+.pls-link{color:var(--accent); cursor:pointer; text-decoration:underline; font-weight:600}
+.pls-hm{overflow-x:auto}
+.pls-hmt{border-collapse:separate; border-spacing:0 4px; width:100%}
+.pls-hmt tr.pls-fam th{text-align:left; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--ink3); padding:10px 4px 2px; border-bottom:1px solid var(--line)}
+.pls-rowh{text-align:left; vertical-align:top; width:170px; min-width:150px; padding:6px 8px 6px 4px; font-weight:400}
+.pls-dimn{font-weight:800; font-size:12.5px}
+.pls-dimrs{font-size:11px; color:var(--ink2)}
+.pls-dimmeta{font-size:10.5px; color:var(--ink3)}
+.pls-cells-td{vertical-align:top; padding:2px 0}
+.pls-cells{display:flex; flex-wrap:wrap; gap:4px}
+.pls-cell{min-width:86px; max-width:210px; border-radius:8px; padding:5px 8px; cursor:pointer; border:1px solid transparent; line-height:1.2; transition:transform .08s}
+.pls-cell:hover{transform:translateY(-1px); border-color:var(--accent)}
+.pls-cell.gris{border:1px dashed var(--line2)}
+.pls-cell.meta{opacity:.6; border:1px dashed var(--line2)}
+.pls-cell.conficha .pls-cl::after{content:' ▸'; opacity:.55}
+.pls-cl{font-size:11.5px; font-weight:700; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.pls-ce{font-size:15px; font-weight:800; letter-spacing:-.02em}
+.pls-cs{font-size:10px; opacity:.8}
+.pls-legend{display:flex; flex-wrap:wrap; gap:8px 16px; align-items:flex-start; font-size:11.5px; color:var(--ink2); margin-top:10px; padding:8px 10px; border:1px solid var(--line); border-radius:9px}
+.pls-scale{display:flex; gap:3px; flex-shrink:0}
+.pls-scale span{display:inline-block; min-width:40px; text-align:center; padding:4px 6px; border-radius:6px; font-weight:700; font-size:11px}
+.pls-chip{display:inline-block; min-width:52px; text-align:center; padding:3px 8px; border-radius:7px; font-weight:800; font-size:12px}
+.pls-drawer{position:fixed; top:0; right:0; bottom:0; width:min(560px,96vw); background:var(--card); color:var(--ink); border-left:1px solid var(--line); box-shadow:-12px 0 40px rgba(0,0,0,.18); z-index:90; display:flex; flex-direction:column}
+.pls-dh{display:flex; align-items:flex-start; gap:10px; padding:14px 16px; border-bottom:1px solid var(--line)}
+.pls-dt{font-size:20px; font-weight:800; letter-spacing:-.02em}
+.pls-dacts{margin-left:auto; display:flex; gap:6px; flex-shrink:0}
+.pls-db{overflow-y:auto; padding:12px 16px 24px; font-size:12.5px}
+.pls-lectura{background:var(--accent-soft); border-radius:10px; padding:10px 12px; font-size:13px; line-height:1.45; margin-bottom:10px}
+.pls-lh{font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--accent); margin-bottom:4px}
+.pls-next{margin-top:6px; font-size:12px}
+.pls-sec{margin-top:12px}
+.pls-sh{font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--ink3); margin-bottom:4px}
+.pls-kv{width:100%; border-collapse:collapse; font-size:12px}
+.pls-kv th{text-align:left; vertical-align:top; width:150px; padding:4px 8px 4px 0; color:var(--ink2); font-weight:700; border-bottom:1px solid var(--line)}
+.pls-kv td{padding:4px 0; border-bottom:1px solid var(--line); vertical-align:top}
+@media (max-width:700px){.pls-rowh{width:110px; min-width:100px}}`;
+  document.head.appendChild(st);
+  document.addEventListener('keydown',e=>{if(e.key==='Escape'&&PLSUI.ficha)plsCloseFicha();});
+}
+/* ── corridas por marca (estratos) ── */
+function plsRunKey(name){return String(name||'run').replace(/\.json$/i,'');}
+function plsRunLabel(key,run){
+  const s=(run&&run.source_full)||{}; if(s.estrato)return String(s.estrato);
+  const m=String(key||'').match(/^dimensiones-run[_-]?(.*)$/);
+  if(m)return m[1]?m[1].replace(/[_-]+/g,' '):'whole account';
+  return (run&&run.run_type==='strategic_learning')?'CTP × Angle · '+key:key;
+}
+function plsRunsAll(){
+  /* todas las corridas de la marca: la de pantalla (B.pls) más las guardadas en B.plsRuns. Una corrida vieja sin key recibe una. */
+  const r={}; const o=(B&&B.plsRuns)||{}; Object.keys(o).forEach(k=>{r[k]=o[k];});
+  if(B&&B.pls&&B.pls.tested){B.pls.key=B.pls.key||plsRunKey((B.pls.source||{}).name||'run'); r[B.pls.key]=B.pls;}
+  return r;
+}
+function plsSelectRun(key){
+  if(!B||!B.pls||key===B.pls.key)return;
+  B.plsRuns=B.plsRuns||{}; const next=B.plsRuns[key]; if(!next)return;
+  delete B.plsRuns[key]; B.plsRuns[B.pls.key]=B.pls; B.pls=next; PLSUI.ficha=null;
+  save(); render();
+}
+/* ── fichas (bridge/dimensiones/fichas.py) — clave propia de localStorage, cache por marca en PLSUI.fichas ── */
+function plsFichasKey(){return 'sos-v1-'+B.code+'-fichas';}
+function plsFichasInfo(){
+  if(!B)return null;
+  if(PLSUI.fichas[B.code]===undefined){
+    let d=null; try{d=JSON.parse(lsGet(plsFichasKey())||'null');}catch(e){d=null;}
+    PLSUI.fichas[B.code]=(d&&d.fichas)?d:null;
+  }
+  const d=PLSUI.fichas[B.code]; if(!d)return null;
+  const M=d.manifest||{};
+  return {n:Object.keys(d.fichas).length, name:(d.source||{}).name||'—', loadedAt:(d.source||{}).loadedAt||'—', sep:(M.separabilidad||{}).generado||null,
+    commit:M.commit||null, taxonomia:(M.taxonomia||{}).version||null, run:(M.run||{}).generado||null, persisted:d.persisted!==false, manifest:M};
+}
+function plsFicha(dim,valor){const d=B&&PLSUI.fichas[B.code]; if(d===undefined)plsFichasInfo(); const x=B&&PLSUI.fichas[B.code]; return (x&&x.fichas&&x.fichas[dim+':'+valor])||null;}
+function importPlsFichas(d,meta){
+  const M=d._manifest||{}; const today=new Date().toISOString().slice(0,10);
+  const map={}; d.fichas.forEach(f=>{map[f.clave||(f.dim+':'+f.valor)]=f;});
+  const pack={manifest:M, source:{name:(meta||{}).name||'fichas-dimensiones.json', loadedAt:today, loadedBy:(meta||{}).who||'—'}, fichas:map};
+  pack.persisted=lsSet(plsFichasKey(),JSON.stringify(pack)); /* fallo de cuota: quedan en memoria y la vista lo dice */
+  PLSUI.fichas[B.code]=pack; PLSUI.ficha=null;
+  render();
+}
+function plsClearFichas(){try{localStorage.removeItem(plsFichasKey());}catch(e){} PLSUI.fichas[B.code]=null; PLSUI.ficha=null; render();}
+async function plsLoadFichas(inp){
+  const f=inp.files&&inp.files[0]; if(!f)return; const txt=await f.text(); inp.value='';
+  let d=null; try{d=JSON.parse(txt);}catch(e){}
+  if(!(d&&Array.isArray(d.fichas)&&d._manifest)){alert('Not a fichas file: expected {_manifest, fichas[]} from bridge/dimensiones/fichas.py.');return;}
+  const bc=d._manifest.brand_code;
+  if(bc&&bc!==B.code&&!confirm(`These cards are for ${bc}, and you are on ${B.name}. Load them anyway?`))return;
+  importPlsFichas(d,{name:f.name,who:'upload'});
+  alert(`✓ ${d.fichas.length} learning cards loaded${PLSUI.fichas[B.code].persisted?'':' (browser storage is full: they will be gone when the tab closes; reload them via deep link or upload)'}.`);
+}
+/* ── colores: escala fija −40…+40, gris bajo PLS_GRIS ── */
+function plsColor(effect,conf){
+  if((conf||0)<PLS_GRIS)return 'var(--hm0)';
+  const p=Math.min(1,Math.abs(effect||0)/PLS_ESCALA); if(p<0.05)return 'var(--hm0)';
+  return `color-mix(in srgb, ${(effect||0)>0?'var(--good)':'var(--bad)'} ${Math.round(10+p*75)}%, var(--card))`;
+}
+function plsInk(effect,conf){if((conf||0)<PLS_GRIS)return 'var(--ink3)'; return Math.abs(effect||0)/PLS_ESCALA>0.55?'#fff':'var(--ink)';}
+const plsEff=(t,gris)=>gris?'·':((t.effect||0)>0?'+':'')+(t.effect||0).toFixed(1);
+/* ── filtros ── */
+function plsFiltra(T){
+  const q=plsNorm(PLSUI.q);
+  return T.filter(t=>(!PLSUI.fam||t.familia===PLSUI.fam)&&(!PLSUI.estado||t.estado===PLSUI.estado)&&(t.conf||0)>=PLSUI.minSop&&(t.creatives||0)>=PLSUI.minCre
+    &&(!PLSUI.hideV2||!(t.pendiente_v2>0))&&(!q||plsNorm([t.label,t.valor,t.nombre_tagger,t.nombre_rs,t.dim].join(' ')).includes(q)));
+}
+function plsSetFiltro(k,v){PLSUI[k]=v; plsRedraw();}
+function plsResetFiltros(){Object.assign(PLSUI,{fam:'',estado:'',minSop:0,minCre:2,q:'',hideV2:false,ancho:false,par:'',parQ:'',parMinCre:3,parTodos:false}); render();}
+function plsRedraw(){
+  const R=plsRun(); if(!R)return;
+  const h=document.getElementById('pls-heat-body'); if(h)h.innerHTML=plsHeatHtml(R);
+  const p=document.getElementById('pls-pares-body'); if(p)p.innerHTML=plsParesHtml(R);
+  const s=document.getElementById('pls-sop-v'); if(s)s.textContent=PLSUI.minSop+'%';
+}
+/* ── heatmap ── */
+function plsHeatCard(R){
+  const T=R.tested||[];
+  const fams=PLS_FAMILIAS.filter(f=>T.some(t=>t.familia===f[0]));
+  const estados=[...new Set(T.map(t=>t.estado).filter(Boolean))];
+  const scale=[-40,-20,0,20,40].map(e=>`<span style="background:${plsColor(e,100)}; color:${plsInk(e,100)}">${e>0?'+':''}${e}</span>`).join('')+`<span style="background:${plsColor(0,0)}; color:var(--ink3)">grey</span>`;
+  return `<h4 class="pls-h4" id="pls-heat">Heatmap <span class="hint">rows = dimension, grouped by family · cells = values sorted by spend · click a cell for its learning card</span></h4>
+  <div class="pls-filters" id="pls-filters">
+    <label>Family <select onchange="plsSetFiltro('fam',this.value)"><option value="">all</option>${fams.map(f=>`<option value="${f[0]}" ${PLSUI.fam===f[0]?'selected':''}>${f[1]}</option>`).join('')}</select></label>
+    <label>State <select onchange="plsSetFiltro('estado',this.value)"><option value="">all</option>${estados.map(e=>`<option value="${esc(e)}" ${PLSUI.estado===e?'selected':''}>${esc(e)}</option>`).join('')}</select></label>
+    <label>Min support <input type="range" min="0" max="100" step="5" value="${PLSUI.minSop}" oninput="plsSetFiltro('minSop',+this.value)"> <b id="pls-sop-v">${PLSUI.minSop}%</b></label>
+    <label>Min creatives <input type="number" min="1" max="999" value="${PLSUI.minCre}" style="width:56px" oninput="plsSetFiltro('minCre',+this.value||1)"></label>
+    <label>Search value <input type="search" placeholder="skit, offer, 9x16…" value="${esc(PLSUI.q)}" oninput="plsSetFiltro('q',this.value)"></label>
+    <label><input type="checkbox" ${PLSUI.hideV2?'checked':''} onchange="plsSetFiltro('hideV2',this.checked)"> hide pending v2</label>
+    <label><input type="checkbox" ${PLSUI.ancho?'checked':''} onchange="plsSetFiltro('ancho',this.checked)"> width by spend</label>
+    <a class="pls-link" onclick="plsResetFiltros()">reset</a>
+  </div>
+  <div id="pls-heat-body">${plsHeatHtml(R)}</div>
+  <div class="pls-legend"><div class="pls-scale">${scale}</div>
+    <div><b>Effect</b> = the engine's adjusted score for the value against the account's monthly CPA benchmark (0 = same as the account; + cheaper; − more expensive). One creative = one piece of evidence, <b>not</b> weighted by spend, so this map can disagree with the CPA heat map above — that is the point. Fixed scale −40…+40 across brands and strata. <b>Support</b> (0–100) = how much real evidence sits behind the number; it is <b>not</b> a probability nor a statistical confidence. Cells under ${PLS_GRIS} are grey because the colour cannot be read. <b>Metadata</b> dimensions (dashed, faded) are shown but not scored until human calibration promotes them. Small line = support · creatives. Everything here is a <b>descriptive, retrospective association</b> inside one account — not a cause.</div></div>`;
+}
+function plsHeatHtml(R){
+  const all=(R.tested||[]).length, T=plsFiltra(R.tested||[]);
+  if(!T.length)return `<div class="hint" style="padding:14px 0"><span id="pls-heat-count"><b>0</b> of ${all} groups</span> match these filters.</div>`;
+  const byDim={}; T.forEach(t=>{const d=t.dim||t.ctp; (byDim[d]=byDim[d]||[]).push(t);});
+  const famOf=d=>byDim[d][0].familia||'other', famLabel=f=>(PLS_FAMILIAS.find(x=>x[0]===f)||[f,f])[1];
+  const fams={}; Object.keys(byDim).forEach(d=>{(fams[famOf(d)]=fams[famOf(d)]||[]).push(d);});
+  const rango=d=>{const e=byDim[d].map(t=>t.effect||0); return Math.max(...e)-Math.min(...e);};
+  const maxSp=Math.max(1,...T.map(t=>t.spend||0)), b=R.benchmarks||{};
+  const cell=t=>{
+    const gris=(t.conf||0)<PLS_GRIS, meta=t.estado==='metadata', dim=t.dim||t.ctp, valor=t.valor||t.angle;
+    const w=PLSUI.ancho?Math.round(72+150*Math.sqrt((t.spend||0)/maxSp)):null;
+    const vs=(t.cpa&&b.cpa)?Math.round(100*(t.cpa/b.cpa-1)):null;
+    return `<div class="pls-cell${gris?' gris':''}${meta?' meta':''}${plsFicha(dim,valor)?' conficha':''}" data-dim="${esc(dim)}" data-valor="${esc(valor)}" data-effect="${t.effect}" data-conf="${t.conf||0}"
+      style="background:${plsColor(t.effect,t.conf)}; color:${plsInk(t.effect,t.conf)}${w?`; min-width:${w}px`:''}" onclick="plsOpenFicha(this.dataset.dim,this.dataset.valor)"
+      title="${esc(t.label||valor)} · ${t.creatives||0} creatives · ${plsFmt$(t.spend)} · CPA ${t.cpa?plsFmt$(t.cpa):'—'}${vs!==null?` (${vs>0?'+':''}${vs}% vs benchmark)`:''} · effect ${((t.effect||0)>0?'+':'')+(t.effect||0).toFixed(1)}${gris?' (grey: support under '+PLS_GRIS+')':''} · support ${t.conf||0}% · ${esc(t.status||'no status')}${meta?' · metadata: shown, not scored':''}${t.pendiente_v2?' · pending v2: '+t.pendiente_v2:''}">
+      <div class="pls-cl">${esc(t.label||valor)}</div><div class="pls-ce">${plsEff(t,gris)}</div><div class="pls-cs">${t.conf||0}% · ${t.creatives||0}</div></div>`;};
+  const row=d=>{const rows=byDim[d].slice().sort((x,y)=>(y.spend||0)-(x.spend||0)), t0=rows[0];
+    return `<tr class="pls-row" data-dim="${esc(d)}"><th class="pls-rowh"><div class="pls-dimn">${esc(t0.nombre_tagger||t0.ctp||d)}</div>${t0.nombre_rs&&t0.nombre_rs!==t0.nombre_tagger?`<div class="pls-dimrs">RS: ${esc(t0.nombre_rs)}</div>`:''}<div class="pls-dimmeta">${esc(t0.estado||'')}${t0.motion_internal?` · Motion: ${esc(t0.motion_internal)}`:''} · ${rows.length} value${rows.length>1?'s':''} · range ${rango(d).toFixed(0)}</div></th><td class="pls-cells-td"><div class="pls-cells">${rows.map(cell).join('')}</div></td></tr>`;};
+  const famBlock=f=>{const dims=fams[f].slice().sort((x,y)=>rango(y)-rango(x));
+    return `<tr class="pls-fam"><th colspan="2">${esc(famLabel(f))} <span class="hint">${dims.length} dimension${dims.length>1?'s':''}</span></th></tr>${dims.map(row).join('')}`;};
+  const famOrder=PLS_FAMILIAS.map(f=>f[0]); const order=famOrder.filter(f=>fams[f]).concat(Object.keys(fams).filter(f=>!famOrder.includes(f)));
+  return `<div class="hint" style="margin:4px 0 8px"><span id="pls-heat-count"><b>${T.length}</b> of ${all} groups</span> · ${Object.keys(byDim).length} dimensions · rows sorted by internal range (max − min effect)</div>
+    <div class="pls-hm"><table class="pls-hmt"><tbody>${order.map(famBlock).join('')}</tbody></table></div>`;
+}
+/* ── pares (co-ocurrencia dim × dim) ── */
+function plsParesCard(R){
+  const P=R.pares||[]; if(!P.length)return '';
+  const pars=[...new Set(P.map(x=>x.par))];
+  return `<h4 class="pls-h4" id="pls-pares">Pairs <span class="hint">co-occurrence dimension × dimension · the matrix strategy asked for · same colour scale · family and pending-v2 filters above also apply</span></h4>
+  <div class="pls-filters">
+    <label>Pair <select onchange="plsSetFiltro('par',this.value)"><option value="">all</option>${pars.map(p=>`<option value="${esc(p)}" ${PLSUI.par===p?'selected':''}>${esc(p.replace(':',' × '))}</option>`).join('')}</select></label>
+    <label>Min creatives <input type="number" min="1" value="${PLSUI.parMinCre}" style="width:56px" oninput="plsSetFiltro('parMinCre',+this.value||1)"></label>
+    <label>Search <input type="search" value="${esc(PLSUI.parQ)}" oninput="plsSetFiltro('parQ',this.value)"></label>
+  </div>
+  <div id="pls-pares-body">${plsParesHtml(R)}</div>`;
+}
+function plsParesHtml(R){
+  const P=R.pares||[], q=plsNorm(PLSUI.parQ), b=R.benchmarks||{};
+  const famOf={}; (R.tested||[]).forEach(t=>{famOf[t.dim||t.ctp]=t.familia;});
+  const dimsOf=x=>String(x.par||'').split(':');
+  let rows=P.filter(x=>(x.creatives||0)>=PLSUI.parMinCre&&(!PLSUI.par||x.par===PLSUI.par)&&(!PLSUI.hideV2||!(x.pendiente_v2>0))
+    &&(!PLSUI.fam||dimsOf(x).some(d=>famOf[d]===PLSUI.fam))
+    &&(!q||plsNorm([x.label1,x.label2,x.par,(x.nombres1||{}).nombre_tagger,(x.nombres2||{}).nombre_tagger,(x.nombres1||{}).nombre_rs,(x.nombres2||{}).nombre_rs].join(' ')).includes(q)))
+    .sort((x,y)=>(y.spend||0)-(x.spend||0));
+  const total=rows.length; if(!PLSUI.parTodos)rows=rows.slice(0,PLS_PARES_MAX);
+  if(!total)return `<div class="hint" style="padding:10px 0"><span id="pls-pares-count"><b>0</b> of ${P.length} pairs</span> match.</div>`;
+  const tr=x=>{const gris=(x.conf||0)<PLS_GRIS, vs=(x.cpa&&b.cpa)?Math.round(100*(x.cpa/b.cpa-1)):null;
+    return `<tr class="pls-par" data-par="${esc(x.par)}"><td><b>${esc(x.label1)}</b> × <b>${esc(x.label2)}</b><br><span class="hint">${esc((x.nombres1||{}).nombre_tagger||'')} × ${esc((x.nombres2||{}).nombre_tagger||'')}${x.pendiente_v2?' · pending v2':''}</span></td>
+      <td style="text-align:right">${x.creatives||0}</td><td style="text-align:right">${plsFmt$(x.spend)}</td>
+      <td style="text-align:right">${x.cpa?plsFmt$(x.cpa):'—'}${vs!==null?` <span style="font-size:10.5px; color:${vs>0?'var(--bad)':'var(--good)'}">${vs>0?'+':''}${vs}%</span>`:''}</td>
+      <td><span class="pls-chip" style="background:${plsColor(x.effect,x.conf)}; color:${plsInk(x.effect,x.conf)}">${plsEff(x,gris)}</span></td>
+      <td style="text-align:right">${x.conf||0}%</td><td style="font-weight:700; color:${plsStatusColor(x.status)}">${esc(x.status||'')}</td></tr>`;};
+  return `<div class="hint" style="margin:4px 0 6px"><span id="pls-pares-count"><b>${total}</b> of ${P.length} pairs</span>${total>rows.length?` · showing ${rows.length} <a class="pls-link" onclick="plsSetFiltro('parTodos',true)">show all</a>`:''}</div>
+    <div style="overflow-x:auto"><table class="et"><thead><tr><th>Pair</th><th style="text-align:right">Creatives</th><th style="text-align:right">Spend</th><th style="text-align:right">CPA</th><th>Effect</th><th style="text-align:right">Support</th><th>Status</th></tr></thead><tbody>${rows.map(tr).join('')}</tbody></table></div>`;
+}
+/* ── ficha (drawer): la misma estructura alimenta el HTML y el texto plano que se copia ── */
+function plsFichaSecciones(dim,valor,t,f){
+  if(!t&&!f)return null;
+  const v=f?f.lo_que_vimos:{}, n=f?f.nombres:{tagger:t.nombre_tagger,rs:t.nombre_rs,motion:t.motion_internal};
+  const R=plsRun(), bench=(R&&R.benchmarks&&R.benchmarks.cpa)||v.cpa_benchmark;
+  const g=(k,alt)=>f?v[k]:alt;
+  const cre=g('creativos',t&&t.creatives||0), creEv=g('creativos_con_evidencia',t&&t.creativesWithEvidence||0), spend=g('spend',t&&t.spend||0), conv=g('conv',t&&t.conv||0);
+  const cpa=g('cpa',t&&t.cpa), effect=g('effect',t&&t.effect), sop=g('soporte',t&&t.conf||0), status=g('status',t&&t.status), pv2=g('pendiente_v2',t&&t.pendiente_v2||0);
+  const vs=(cpa&&bench)?Math.round(100*(cpa/bench-1)):null, fmtR=x=>x==null?'—':'×'+Number(x).toFixed(2), fmtE=x=>x==null?'—':(x>0?'+':'')+Number(x).toFixed(1);
+  const S={label:(f&&f.label)||(t&&t.label)||valor, dim, valor, nombres:n, familia:(f&&f.familia)||(t&&t.familia)||'', estado:(f&&f.estado)||(t&&t.estado)||'',
+    detalle:f?(f.magnitudes||{}).detalle:'no card', lectura:f?f.lectura:null, siguiente:f?f.siguiente:null, secciones:[], pie:null,
+    aviso:f?null:'No separability loaded: this card shows what the run has — no campaign context, no reading. Load data/<brand>/fichas-dimensiones.json (bridge/dimensiones/fichas.py) or open the shell with &fichas= in the deep link.'};
+  S.secciones.push({h:'What we saw',rows:[['Creatives',`${cre} (${creEv} with evidence)`],['Spend',plsFmt$(spend)],['Conversions',Number(conv||0).toLocaleString()],
+    ['CPA',cpa?plsFmt$(cpa)+(vs!==null?` (${vs>0?'+':''}${vs}% vs benchmark ${plsFmt$(bench)})`:''):'—'],['Effect',effect==null?'—':fmtE(effect)],
+    ['Support',`${sop||0}% — evidence behind the number, not a probability`],['Status',(status||'no status')+(S.estado==='metadata'?' (metadata: shown, not scored)':'')],
+    pv2?['Pending v2',`${pv2} row(s) with labels migrated from v2`]:null].filter(Boolean)});
+  if(f){
+    const d=f.donde_corre||{}, NT={campana:'Campaign',programa:'Program',objetivo:'Objective',funnel:'Funnel',mes:'Month'};
+    const ctx=Object.keys(NT).filter(k=>d[k]).map(k=>[NT[k],`${d[k].label||d[k].dominante} · ${Math.round(100*(d[k].share||0))}% of the value's spend (${plsFmt$(d[k].spend)})${d[k].fuera?` · outside: ${d[k].fuera.creativos||0} creatives, ${plsFmt$(d[k].fuera.spend)}${d[k].sin_soporte_fuera?' — below thresholds':''}`:''}`]);
+    if(ctx.length)S.secciones.push({h:'Where it runs (dominant context)',rows:ctx});
+    const m=f.magnitudes||{}, mag=[];
+    const lado=x=>x?`${x.creativos||0} creatives · ${plsFmt$(x.spend)}${x.cpa?' · CPA '+plsFmt$(x.cpa):''}${x.R!=null?' · R '+Number(x.R).toFixed(2):''}`:'—';
+    [['global','Whole account'],['dentro','Inside the dominant context'],['fuera','Outside the dominant context']].forEach(([k,lbl])=>{const x=m[k]; if(!x)return;
+      mag.push([lbl+(x.estrato&&k!=='global'?` (${x.estrato})`:''),`engine contrast ${fmtE(x.contraste_motor)} · common yardstick ${fmtR(x.cpa_ratio)} CPA, ${fmtR(x.R_ratio)} R${x.comparable?'':' · not comparable'} | value: ${lado(x.valor)} | rest: ${lado(x.resto)}`]);});
+    Object.keys(m.por_estrato||{}).forEach(k=>{const r=m.por_estrato[k]; if(!r)return;
+      mag.push([`By ${k} (weighted over comparable strata)`,`${r.comparables||0} comparable (${r.negativos||0} − / ${r.positivos||0} +) · contrast ${fmtE(r.contraste_motor)} · ${fmtR(r.cpa_ratio)} CPA · ${fmtR(r.R_ratio)} R`]);});
+    if(mag.length)S.secciones.push({h:'The two magnitudes',sub:'Engine contrast = adjusted effect of the value minus the rest of the stratum (different shrinkage on each side: not a common yardstick). Common yardstick: ×CPA = CPA value / CPA rest (> 1 = more expensive); ×R = R value / R rest, R = observed / expected conversions (> 1 = better than the reference CPA). Read them side by side, never one alone.',rows:mag});
+    if(m.ablaciones&&m.ablaciones.length)S.secciones.push({h:'Ablations (same contrast, before → after)',rows:m.ablaciones.map(a=>[`without ${a.tipo}${a.quitado?' '+a.quitado:''}${a.share_quitado?` (${Math.round(100*a.share_quitado)}%)`:''}`,`${a.veredicto||''}${a.cambio_negocio?' · '+a.cambio_negocio:''}`])});
+    if(f.advertencias&&f.advertencias.length)S.secciones.push({h:'Warnings',rows:f.advertencias.map(a=>[`[${a.nivel}] ${a.codigo}`,a.texto])});
+    if(f.coocurrencia&&f.coocurrencia.length)S.secciones.push({h:'Co-occurrence',rows:f.coocurrencia.map(c=>[c.con,`${Math.round(100*(c.share_spend||0))}% of this value's spend also carries it · without it: ${(c.sin_el_otro||{}).creativos||0} creatives, ${plsFmt$((c.sin_el_otro||{}).spend)}${c.soporte_suficiente?'':' (insufficient: the two cannot be separated)'}`])});
+    if(f.perfil&&f.perfil.length)S.secciones.push({h:'Co-occurrence profile (top by spend share)',rows:f.perfil.slice(0,6).map(p=>[p.nombre||p.dim,`${p.label||p.valor} · ${Math.round(100*(p.share_spend||0))}%`])});
+    const def=f.definicion||{}; if(def.valor||def.dimension)S.secciones.push({h:'Definition',rows:[def.dimension?['Dimension',def.dimension]:null,def.valor?['Value',def.valor+(def.origen?` (${def.origen})`:'')]:null].filter(Boolean)});
+    const FI=plsFichasInfo()||{}, M=FI.manifest||{};
+    S.pie=`taxonomy ${(M.taxonomia||{}).version||'—'} · run ${(M.run||{}).generado||'—'} · separability ${(M.separabilidad||{}).generado||'not loaded'} · commit ${M.commit||'—'} · ${M.reglas||''}${FI.persisted===false?' · NOT persisted (storage full)':''}`;
+  }else{
+    S.secciones.push({h:'Names',rows:[['Dimension',`${n.tagger||dim}${n.rs&&n.rs!==n.tagger?' · RS: '+n.rs:''}${n.motion?' · Motion: '+n.motion:''}`],['Key',dim+':'+valor]]});
+  }
+  return S;
+}
+function plsFichaCtx(dim,valor){const R=plsRun(); const t=R&&(R.tested||[]).find(x=>(x.dim||x.ctp)===dim&&(x.valor||x.angle)===valor); return {t:t||null,f:plsFicha(dim,valor)};}
+function plsDrawerHtml(){
+  const {dim,valor}=PLSUI.ficha, {t,f}=plsFichaCtx(dim,valor), S=plsFichaSecciones(dim,valor,t,f);
+  const head=`<div class="pls-dh"><div><div class="pls-dt" id="pls-drawer-title">${esc(S?S.label:valor)}</div><div class="hint">${esc(S?(S.nombres.tagger||dim):dim)}${S&&S.nombres.rs&&S.nombres.rs!==S.nombres.tagger?' · RS: '+esc(S.nombres.rs):''}${S&&S.nombres.motion?' · Motion: '+esc(S.nombres.motion):''}${S?` · ${esc(S.familia)} · ${esc(S.estado)} · card: ${esc(S.detalle)}`:''}</div></div>
+    <div class="pls-dacts"><button class="btn tiny" id="pls-copy" onclick="plsCopiarFicha()">copy card</button><button class="btn tiny" onclick="plsCloseFicha()" title="close (Esc)">✕</button></div></div>`;
+  if(!S)return `<div class="pls-drawer" id="pls-drawer" data-dim="${esc(dim)}" data-valor="${esc(valor)}">${head}<div class="hint" style="padding:12px 16px">This value is not in the run on screen.</div></div>`;
+  const rows=s=>`<table class="pls-kv">${s.rows.map(r=>`<tr><th>${esc(r[0])}</th><td>${esc(r[1]).replace(/ \| /g,'<br>')}</td></tr>`).join('')}</table>`;
+  return `<div class="pls-drawer" id="pls-drawer" data-dim="${esc(dim)}" data-valor="${esc(valor)}">${head}<div class="pls-db">
+    ${S.lectura?`<div class="pls-lectura"><div class="pls-lh">Reading <span class="hint">fixed rules, not a model · bridge/dimensiones/fichas.py</span></div><span id="pls-lectura">${esc(S.lectura)}</span>${S.siguiente?`<div class="pls-next"><b>Next:</b> ${esc(S.siguiente)}</div>`:''}</div>`:''}
+    ${S.aviso?`<div class="alert warn" id="pls-aviso">🟡 <span>${esc(S.aviso)}</span></div>`:''}
+    ${S.secciones.map(s=>`<div class="pls-sec"><div class="pls-sh">${esc(s.h)}</div>${s.sub?`<div class="hint" style="margin-bottom:6px">${esc(s.sub)}</div>`:''}${rows(s)}</div>`).join('')}
+    ${S.pie?`<div class="hint" style="margin-top:10px">${esc(S.pie)}</div>`:''}
+    <div class="hint" style="margin-top:6px">Descriptive, retrospective association inside one account — not a cause (docs/auditoria-2026-09.md §2). Labels come from a model and are not yet human-calibrated.</div>
+    </div></div>`;
+}
+function plsFichaTexto(dim,valor){
+  const {t,f}=plsFichaCtx(dim,valor), S=plsFichaSecciones(dim,valor,t,f); if(!S)return '';
+  const L=[`${S.label} — ${S.nombres.tagger||dim}${S.nombres.rs&&S.nombres.rs!==S.nombres.tagger?' · RS: '+S.nombres.rs:''}${S.nombres.motion?' · Motion: '+S.nombres.motion:''}`,`family ${S.familia} · state ${S.estado} · card: ${S.detalle} · key ${dim}:${valor}`,''];
+  if(S.lectura)L.push('READING: '+S.lectura); if(S.siguiente)L.push('NEXT: '+S.siguiente); if(S.aviso)L.push('NOTE: '+S.aviso);
+  S.secciones.forEach(s=>{L.push('',s.h.toUpperCase()+':'); if(s.sub)L.push('('+s.sub+')'); s.rows.forEach(r=>L.push('- '+r[0]+': '+r[1]));});
+  if(S.pie)L.push('',S.pie);
+  L.push('Descriptive, retrospective association inside one account; not causal; labels not yet human-calibrated.');
+  return L.join('\n');
+}
+function plsDrawDrawer(){const host=document.getElementById('pls-drawer-host'); if(!host)return; host.innerHTML=PLSUI.ficha?plsDrawerHtml():'';}
+function plsOpenFicha(dim,valor){PLSUI.ficha={dim,valor}; plsDrawDrawer();}
+function plsCloseFicha(){PLSUI.ficha=null; plsDrawDrawer();}
+async function plsCopiarFicha(){
+  if(!PLSUI.ficha)return; const txt=plsFichaTexto(PLSUI.ficha.dim,PLSUI.ficha.valor), btn=document.getElementById('pls-copy');
+  let ok=false;
+  try{if(navigator.clipboard&&navigator.clipboard.writeText){await navigator.clipboard.writeText(txt); ok=true;}}catch(e){}
+  if(!ok){try{const ta=document.createElement('textarea'); ta.value=txt; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.select(); ok=document.execCommand('copy'); ta.remove();}catch(e){}}
+  if(btn){btn.textContent=ok?'✓ copied':'copy failed'; setTimeout(()=>{if(btn.isConnected)btn.textContent='copy card';},1600);}
+  return ok;
+}
+/* ── tabla plana (la vista anterior), plegada ── */
+function plsFlatTables(R){
+  const b=R.benchmarks||{}, T=R.tested||[];
+  const byDim={}; T.forEach(t=>{(byDim[t.dim||t.ctp]=byDim[t.dim||t.ctp]||[]).push(t);});
+  const dims=Object.keys(byDim).sort((x,y)=>{const r=d=>Math.max(...byDim[d].map(t=>t.effect||0))-Math.min(...byDim[d].map(t=>t.effect||0)); return r(y)-r(x);});
+  const effCol=t=>t.conf?(t.effect>=6?'var(--good)':t.effect<=-6?'var(--bad)':'var(--ink)'):'var(--ink3)';
+  const row=t=>{const vs=(t.cpa&&b.cpa)?Math.round(100*(t.cpa/b.cpa-1)):null;
+    return `<tr><td>${esc(t.label||t.angle||t.valor)}</td><td style="text-align:right">${t.creatives||t.creativesWithEvidence||0}</td><td style="text-align:right">${plsFmt$(t.spend)}</td>
+      <td style="text-align:right">${t.cpa?plsFmt$(t.cpa):'—'}${vs!==null?` <span style="font-size:10.5px; color:${vs>0?'var(--bad)':'var(--good)'}">${vs>0?'+':''}${vs}%</span>`:''}</td>
+      <td style="text-align:right; font-weight:800; color:${effCol(t)}">${t.conf?((t.effect>0?'+':'')+t.effect.toFixed(1)):'—'}</td><td style="text-align:right">${t.conf}%</td>
+      <td style="font-weight:700; color:${plsStatusColor(t.status)}">${esc(t.status||'')}</td></tr>`;};
+  return dims.map(d=>{const rows=byDim[d].filter(t=>(t.creatives||0)>=2).sort((x,y)=>(y.effect||0)-(x.effect||0)); if(!rows.length)return '';
+    return `<details style="margin:6px 0"><summary style="cursor:pointer; font-weight:700">${esc(byDim[d][0].nombre_tagger||byDim[d][0].ctp||d)} <span class="hint">· ${rows.length} values with ≥ 2 creatives · range ${(Math.max(...rows.map(t=>t.effect))-Math.min(...rows.map(t=>t.effect))).toFixed(0)} points</span></summary>
+      <div style="overflow-x:auto"><table class="et"><thead><tr><th>Value</th><th style="text-align:right">Creatives</th><th style="text-align:right">Spend</th><th style="text-align:right">CPA</th><th style="text-align:right">Effect</th><th style="text-align:right">Support</th><th>Status</th></tr></thead><tbody>${rows.map(row).join('')}</tbody></table></div></details>`;}).join('');
+}
+function plsBodyDims(R){
+  /* M6 · Ad Dimension Extractor. Los grupos de tested[] se SUPERPONEN (cada asset entra en un grupo por
+     dimensión): el spend no se suma entre filas; el total único viene declarado en _source.spend_unico. */
+  plsCss();
+  const b=R.benchmarks||{}, S=R.source_full||{}, src=R.source||{}, T=R.tested||[];
+  const FI=plsFichasInfo(), runs=plsRunsAll(), keys=Object.keys(runs), curKey=R.key||'';
+  return `
+  <div class="card pls-card" id="pls-m6"><div class="card-h"><h3>⟐ Creative history &amp; results — ad dimensions (M6)</h3>
+    <span class="hint">what the ad shows, crossed with performance by the engine · describes executions, does not validate CTPs</span>
+    ${/^(127\.0\.0\.1|localhost)$/.test(location.hostname)?`<a class="btn pls-btn" id="pls-open-library" href="../app/explorar-m6.html?brand=${encodeURIComponent((B.name||'grubhub').toLowerCase())}" target="_blank" rel="noopener" title="Ad Library · history &amp; results — the creative view: real ads, filters by decision, CPA by month, compare two ads, save references (needs the OS served over http, e.g. py -m http.server 8765 --bind 127.0.0.1)">🎞 Open Ad Library</a>`:''}
+    ${keys.length>1?`<select class="pls-sel" id="pls-run-sel" title="Stratum: which run of the engine is on screen" onchange="plsSelectRun(this.value)">${keys.map(k=>`<option value="${esc(k)}" ${k===curKey?'selected':''}>${esc(plsRunLabel(k,runs[k]))}</option>`).join('')}</select>`:''}</div>
+    <div class="card-b">
+    <div class="fbrow">📊 <b>${esc(src.name||'M6 run')}</b>${keys.length>1?` · stratum <b>${esc(plsRunLabel(curKey,R))}</b> (${keys.length} runs loaded)`:''} · data: ${esc(src.dates||'—')} · loaded ${esc(src.loadedAt||'—')} by ${esc(src.loadedBy||'—')}
+      <br><span style="color:var(--ink3); font-size:11.5px">${esc(S.origen||'')} · taxonomy ${esc(S.taxonomia||'—')} · perception ${esc(S.gemini||'—')} · judge ${esc(S.juez||'—')} on ${S.fuentes&&S.fuentes['juez:'+S.juez]||0} assets</span>
+      <br><span style="color:var(--ink3); font-size:11.5px" id="pls-fichas-info">🗂 learning cards: ${FI?`<b>${FI.n}</b> loaded (${esc(FI.name)} · separability ${esc(FI.sep||'—')} · commit ${esc(FI.commit||'—')})${FI.persisted?'':' · <b style="color:var(--warn)">not persisted: browser storage is full</b>'}`:'<b>none loaded</b> — cells open with the run only'} · <label class="pls-link">load fichas-dimensiones.json<input type="file" accept=".json" style="display:none" onchange="plsLoadFichas(this)"></label>${FI?` · <a class="pls-link" onclick="plsClearFichas()">remove</a>`:''}</span></div>
+    <div class="tiles" style="margin-top:12px">
+      <div class="tile"><div class="v">${plsFmt$(S.spend_unico||S.spend_cubierto||0)}</div><div class="l">Spend of the ads in this dataset${S.pct_spend_cubierto?` · ${S.pct_spend_cubierto}% of the inventory with dimensions`:''}</div></div>
+      <div class="tile"><div class="v">${S.assets_con_dimensiones||'—'}</div><div class="l">Assets with dimensions${S.assets_total?` of ${S.assets_total}`:''}</div></div>
+      <div class="tile"><div class="v">${T.length}</div><div class="l">Dimension × value groups (overlapping)</div></div>
+      <div class="tile"><div class="v">${b.cpa?plsFmt$(b.cpa):'—'}</div><div class="l">Reference CPA benchmark (${esc(b.convEvent||'conv')}); each obs uses its month's</div></div>
+    </div>
+    <div class="alert warn" style="margin-top:12px">🟡 <span><b>How to read this.</b> Each asset sits in one group per dimension: spends across rows <b>do not add up</b>. Contrasts are <b>associations</b> inside one account, not causes: skit, actor, humorous tone and elevated production can be one and the same campaign. Statics and video perform differently in this account: read video dimensions inside the video stratum. Labels come from a model; human calibration is pending.</span></div>
+    ${plsHeatCard(R)}
+    ${plsParesCard(R)}
+    <details style="margin-top:14px"><summary style="cursor:pointer; font-weight:700">Flat table <span class="hint">one dimension at a time, values with ≥ 2 creatives · the previous view</span></summary>${plsFlatTables(R)}</details>
+    <div id="pls-drawer-host">${PLSUI.ficha?plsDrawerHtml():''}</div>
+    </div></div>`;
+}
+function plsBody(){
+  const R=plsRun(); if(!R)return '';
+  if(R.run_type==='execution_analysis')return plsBodyDims(R);
+  const b=R.benchmarks||{}, T=R.tested.slice().sort((x,y)=>(y.spend||0)-(x.spend||0));
+  const spend=T.reduce((a,t)=>a+(t.spend||0),0);
+  const noAud=T.filter(t=>!t.ctp).reduce((a,t)=>a+(t.spend||0),0);
+  const withCtp=T.filter(t=>t.ctp).reduce((a,t)=>a+(t.spend||0),0);
+  const wide=T.filter(t=>t.cpaSpread&&t.cpaSpread.ratio>=2).sort((x,y)=>y.cpaSpread.ratio-x.cpaSpread.ratio);
+  const src=R.source||{};
+  const row=t=>{
+    const vs=(t.cpa&&b.cpa)?Math.round(100*(t.cpa/b.cpa-1)):null;
+    const sp=t.cpaSpread;
+    return `<tr>
+      <td><b>${esc(t.ctp||'—')}</b> × ${esc(t.angle)}${t.funnel?` <span style="color:var(--ink3)">(${esc(t.funnel)})</span>`:''}</td>
+      <td style="font-size:11.5px; color:var(--ink2)">${esc(t.segment||'—')}</td>
+      <td style="text-align:right">${plsFmt$(t.spend)}</td>
+      <td style="text-align:right">${(t.conv||0).toLocaleString()}</td>
+      <td style="text-align:right">${t.cpa?plsFmt$(t.cpa):'—'}${vs!==null?`<br><span style="font-size:10.5px; color:${vs>0?'var(--bad)':'var(--good)'}">${vs>0?'+':''}${vs}%</span>`:''}</td>
+      <td style="text-align:right; font-size:11.5px">${sp?`${plsFmt$(sp.min)}–${plsFmt$(sp.max)}<br><span style="color:${sp.ratio>=2?'var(--warn)':'var(--ink3)'}; font-weight:700">${sp.ratio}x</span>`:'—'}</td>
+      <td style="text-align:right; font-weight:800; color:${t.conf?(t.effect>=6?'var(--good)':t.effect<=-6?'var(--bad)':'var(--ink)'):'var(--ink3)'}">${t.conf?((t.effect>0?'+':'')+t.effect.toFixed(1)):'—'}</td>
+      <td style="text-align:right">${t.conf}%</td>
+      <td style="text-align:right">${t.creativesWithEvidence||0}</td>
+      <td style="font-weight:700; color:${plsStatusColor(t.status)}">${esc(t.status)}</td></tr>`;};
+  return `
+  <div class="card"><div class="card-h"><h3>⟐ PLS engine — evidencia por combinación</h3>
+    <span class="hint">corrida del motor sobre data taggeada · la shell muestra, no recalcula</span></div>
+    <div class="card-b">
+    <div class="fbrow">📊 <b>${esc(src.name||'PLS run')}</b> · datos: ${esc(src.dates||'—')} · cargado ${esc(src.loadedAt||'—')} por ${esc(src.loadedBy||'—')}
+      ${src.origin?`<br><span style="color:var(--ink3); font-size:11.5px">${esc(src.origin)}</span>`:''}</div>
+    <div class="tiles" style="margin-top:12px">
+      <div class="tile"><div class="v">${plsFmt$(spend)}</div><div class="l">Spend analizado</div></div>
+      <div class="tile"><div class="v">${T.length}</div><div class="l">Combinaciones con evidencia</div></div>
+      <div class="tile"><div class="v">${b.cpa?plsFmt$(b.cpa):'—'}</div><div class="l">CPA benchmark (${esc(b.convEvent||'conv')})</div></div>
+      <div class="tile" style="border-color:var(--warn)"><div class="v" style="color:var(--warn)">${plsFmt$(noAud)}</div>
+        <div class="l">⚠ Spend SIN audiencia${spend?` · ${Math.round(100*noAud/spend)}%`:''}</div></div>
+    </div>
+    ${withCtp<spend*0.15?`<div class="alert warn">🟡 <span><b>El mapa CTP × Angle está casi virgen.</b> Solo ${plsFmt$(withCtp)} de ${plsFmt$(spend)} corren contra un CTP —
+      el resto va a audiencias que describen QUIÉN es la persona (membresías, ciclos de vida) o directamente a Broad.
+      Es lo que los tags dejan ver: no hay registro de hipótesis contra mindsets en esta data, lo que no prueba que no existieran.</span></div>`:''}
+    <div style="overflow-x:auto"><table class="et"><thead><tr>
+      <th>CTP × Angle</th><th>Segmento</th><th style="text-align:right">Spend</th><th style="text-align:right">Conv</th>
+      <th style="text-align:right">CPA</th><th style="text-align:right">Rango entre creativos</th>
+      <th style="text-align:right">Efecto</th><th style="text-align:right">Conf</th><th style="text-align:right">Creativos</th><th>Estado</th>
+    </tr></thead><tbody>${T.map(row).join('')}</tbody></table></div>
+    </div></div>
+  ${wide.length?`<div class="card"><div class="card-h"><h3>🔧 Donde los creativos del mismo combo se separan</h3>
+    <span class="hint">combinaciones cuyos creativos difieren 2x o más en CPA</span></div>
+    <div class="card-b">
+    <div class="hint" style="margin-bottom:10px">El promedio del combo esconde la dispersión entre creativos. Puede ser ejecución, contexto de entrega o campaña: la dispersión sola no dice cuál. Esto es accionable para un creativo — el brief tiene que copiar la ejecución que funcionó, no el concepto entero.</div>
+    ${wide.map(t=>`<div class="fbrow"><b>${esc(t.ctp||'(sin audiencia)')} × ${esc(t.angle)}</b> — ${t.creativesWithEvidence} creativos entre ${plsFmt$(t.cpaSpread.min)} y ${plsFmt$(t.cpaSpread.max)} de CPA (<b style="color:var(--warn)">${t.cpaSpread.ratio}x</b>). CPA promedio del combo: ${plsFmt$(t.cpa)}.</div>`).join('')}
+    </div></div>`:''}`;
+}
+
 function vPerf(){
   const reports=B.perf.reports, opts=periodOpts(), sc=perfScope();
   return `<div class="shead"><h2>📈 Performance — tested combinations</h2>
@@ -1321,12 +1761,13 @@ function vPerf(){
       ${opts.map(o=>`<option value="${esc(o.id)}" ${PER.sel===o.id?'selected':''}>${esc(o.lbl)}</option>`).join('')}</select></div>
     <div class="card-b" style="padding-top:10px">${monthTrend(sc)}</div></div>`:''}
   <div class="card"><div class="card-h"><h3>Loaded reports</h3>
-    <button class="btn tiny" style="margin-left:auto" onclick="document.getElementById('perfFile').click()">📁 Upload performance report (.csv / .json)</button>
+    <button class="btn tiny" style="margin-left:auto" onclick="document.getElementById('perfFile').click()">📁 Upload performance report or PLS run (.csv / .json)</button>
     <input type="file" id="perfFile" accept=".csv,.json" style="display:none" onchange="loadPerf(this)"></div>
     <div class="card-b">
     ${(()=>{const ds=perfDS(); return ds&&ds.months.length?`<div class="fbrow">📊 <b>${esc(ds.src)}</b> · monthly account totals + top-25 ads · ${esc(ds.months[0].lbl.replace(/ \(.*\)/,''))} – ${esc(ds.months[ds.months.length-1].lbl)} · pulled ${esc(ds.pulled)}</div>`:'';})()}
     ${reports.length?reports.map(r=>`<div class="fbrow">📄 <b>${esc(r.name)}</b> · data: ${esc(r.dates)} · loaded ${esc(r.loadedAt)} by ${esc(r.loadedBy||'—')}</div>`).join(''):'<div class="hint">No performance reports loaded for this brand yet. Upload the Looker Studio CSV export (per Delivery + Concept) or a converted JSON.</div>'}
     </div></div>
+  ${plsBody()}
   ${sc.rows.length?perfBody(sc):''}`;
 }
 /* ══ monthly trend — the shape of the account over time; click a month to scope everything to it ══ */
@@ -1706,9 +2147,72 @@ function retagRow(key){
   save(); render();
 }
 function unRetag(key){delete (B.perfRetag||{})[key]; save(); render();}
+/* Una corrida del motor PLS (retroactivo CTP × Angle o M6 dimensión × valor) entra a B.pls por acá, venga del
+   file input (loadPerf) o de un deep link (bootFromUrl). Varias corridas por marca (14-sep): la que entra queda en
+   pantalla (B.pls) y la anterior pasa a B.plsRuns (estratos: toda la cuenta / video / imagen…), con clave por nombre
+   de archivo — ver plsRunsAll / plsSelectRun en el bloque PLS. */
+function importPlsRun(d,meta){
+  const s=d._source||{}; const today=new Date().toISOString().slice(0,10);
+  /* obs[] (una fila por ad × mes) pesa 14 MB en la corrida M6 y la shell no lo lee. Si entra en B, save() excede la
+     cuota de localStorage y falla en silencio (lsSet traga el error): la corrida y TODO lo que se guarde después para
+     esa marca se pierden al recargar. Se descarta al importar (smoke test: tests/shell_smoke.py). */
+  const sinObs=a=>a.map(t=>{const {obs,...r}=t; return r;});
+  const key=plsRunKey(meta.name);
+  const run={benchmarks:d.benchmarks, tested:sinObs(d.tested), audit:d._audit||null,
+    /* tipo de corrida: 'strategic_learning' (CTP × Angle, la del retroactivo) o 'execution_analysis' (M6: dimensión × valor).
+       Se guardan también los pares y la procedencia completa: antes se descartaban al importar. */
+    run_type:d.run_type||s.run_type||'strategic_learning', pares:Array.isArray(d.pares)?sinObs(d.pares):[], source_full:s, key,
+    source:{name:meta.name, dates:meta.dates||s.window||'unspecified', loadedAt:today, loadedBy:meta.who||'—', origin:s.origen||s.origin||''}};
+  B.plsRuns=B.plsRuns||{}; delete B.plsRuns[key];
+  if(B.pls&&B.pls.tested){B.pls.key=B.pls.key||plsRunKey((B.pls.source||{}).name||'run'); if(B.pls.key!==key)B.plsRuns[B.pls.key]=B.pls;}
+  B.pls=run; PLSUI.ficha=null;
+  save(); render();
+}
+/* Deep link (demo / abrir desde el repo):
+     ?brand=GRUB&view=perf&run=/data/grubhub/dimensiones-run.json[,/data/grubhub/dimensiones-run_video.json]
+       [&fichas=/data/grubhub/fichas-dimensiones.json][&familia=mensaje][&ficha=formato:skit]
+   Solo funciona servido por http (fetch no lee file://). Sin `run`, solo navega. Con varias corridas, la primera de la
+   lista queda en pantalla; `fichas` solo se lee junto con `run`. `search` opcional: la query a usar en vez de
+   location.search (lo usa el smoke para probar el deep link sin tocar la URL). */
+async function bootFromUrl(search){
+  let q; try{q=new URLSearchParams(search!==undefined?search:location.search);}catch(e){return;}
+  const brand=q.get('brand'), view=q.get('view'), run=q.get('run'), fichas=q.get('fichas');
+  if(!brand&&!view&&!run)return;
+  const code=brand||'GRUB'; if(!BRAND_DEFS.some(b=>b.code===code))return;
+  if(run){
+    try{
+      const urls=run.split(',').map(x=>x.trim()).filter(Boolean), runs=[];
+      for(const u of urls){const r=await fetch(u); const d=await r.json();
+        if(!(d&&Array.isArray(d.tested)&&d.benchmarks))throw new Error('no es una corrida del motor: '+u); runs.push([u,d]);}
+      loadBrand(code); route.brand=code;
+      /* en orden inverso para que la primera de la lista quede en pantalla */
+      runs.slice().reverse().forEach(([u,d])=>importPlsRun(d,{name:u.split('/').pop(),who:'deep link',dates:(d._source||{}).window}));
+    }catch(e){console.warn('deep link: no se pudo cargar la corrida',e); return;}
+    if(fichas){try{const r=await fetch(fichas); const d=await r.json();
+      if(d&&Array.isArray(d.fichas)&&d._manifest)importPlsFichas(d,{name:fichas.split('/').pop(),who:'deep link'}); else console.warn('deep link: fichas con forma inesperada',fichas);
+    }catch(e){console.warn('deep link: no se pudieron cargar las fichas',e);}}
+  }
+  const fam=q.get('familia'); if(fam)PLSUI.fam=fam;
+  go(view||'perf',code);
+  const f=q.get('ficha'); if(f&&f.includes(':')){const i=f.indexOf(':'); plsOpenFicha(f.slice(0,i),f.slice(i+1));}
+}
 async function loadPerf(inp){
   const f=inp.files[0]; if(!f)return; const txt=await f.text(); inp.value='';
   const name=f.name; const today=new Date().toISOString().slice(0,10);
+  /* ¿es una corrida del motor PLS? Se reconoce por su forma, no por el nombre del archivo */
+  if(name.endsWith('.json')){
+    let d=null; try{d=JSON.parse(txt);}catch(e){}
+    if(d&&Array.isArray(d.tested)&&d.benchmarks){
+      const s=d._source||{};
+      if(d.brand&&d.brand.code&&d.brand.code!==B.code&&
+         !confirm(`Esta corrida es de ${d.brand.name||d.brand.code}, y estás parado en ${B.name}. ¿Cargarla igual?`))return;
+      const who2=prompt('¿Quién carga esta corrida? (nombre)','')||'—';
+      const dates2=prompt('Ventana de datos de la corrida (ej. "Aug 1 – Aug 31, 2026")',s.window||'')||'unspecified';
+      importPlsRun(d,{name,who:who2,dates:dates2});
+      alert(`✓ Corrida PLS cargada: ${d.tested.length} combinaciones.`);
+      return;
+    }
+  }
   const who=prompt('Who is loading this report? (name)','')||'—';
   const dates=prompt('Date range of the data in this report (e.g. "Aug 1 – Aug 31, 2026")','')||'unspecified';
   let rows=[],unparsed=[];
@@ -1847,7 +2351,7 @@ function dueMapOf(lanes){const m={}; rmPlan(lanes).forEach(x=>{m[x.d]=x;}); retu
    in one pass. Casting/format/route are decided PER CONCEPT (comp.specs); the lane
    keeps castings[]/formats[] as the de-duplicated union so the sheet's rule
    ("one → pre-fill, several → assign per row") keeps working unchanged. */
-function rmBlank(){return {open:null,f:'',ctp:[],segment:[],angle:[],funnel:[],phase:[],hypothesis:'',concepts:1,variants:'',notes:'',specs:[{casting:'',format:'',route:''}],delivery:''};}
+function rmBlank(){return {open:null,f:'',ctp:[],segment:[],angle:[],funnel:[],phase:[],hypothesis:'',concepts:1,variants:'',notes:'',specs:[{casting:'',format:'',route:'',ref:''}],delivery:''};}
 const STEPS=['ctp','segment','angle','funnel','phase'];
 const STEP_LBL={ctp:'CTP',segment:'Segment',angle:'Angle',funnel:'Funnel',phase:'Phase'};
 const OPTS={ctp:()=>B.layer.ctps.map(c=>c.name),segment:()=>B.layer.segments.map(s=>s.name),angle:()=>B.layer.angles.map(a=>a.name),funnel:()=>FUNNELS,phase:()=>PHASES};
@@ -1866,13 +2370,20 @@ function setF(v){comp.f=v; const el=document.getElementById('chipbox-angle'); if
 function setConcepts(n){
   n=Math.max(1,+n||1); comp.concepts=n;
   const sp=comp.specs||[];
-  while(sp.length<n)sp.push({casting:'',format:'',route:''});
+  while(sp.length<n)sp.push({casting:'',format:'',route:'',ref:''});
   comp.specs=sp.slice(0,n); render();
 }
-function setSpec(i,k,v){const sp=(comp.specs[i]=comp.specs[i]||{casting:'',format:'',route:''});
+function setSpec(i,k,v){const sp=(comp.specs[i]=comp.specs[i]||{casting:'',format:'',route:'',ref:''});
   sp[k]=v;
   if(k==='format'&&!sp.route&&ROUTE_DEFAULT[v])sp.route=ROUTE_DEFAULT[v];
   render();}
+  /* the reference link is free text — stored WITHOUT a re-render so the field keeps focus while it is typed */
+  function setSpecRef(i,v){(comp.specs[i]=comp.specs[i]||{casting:'',format:'',route:'',ref:''}).ref=v;}
+  /* a reference is free text (a link, a slide, a note) — linkify only what is actually a link */
+  function refHtml(v,label){const s=(v||'').trim(); if(!s)return '';
+  return /^https?:\/\//i.test(s)
+  ?'<a href="'+esc(s)+'" target="_blank" rel="noopener" title="'+esc(s)+'" style="color:var(--accent)">🔗 '+esc(label||'reference')+'</a>'
+  :'🔗 '+esc(s.length>40?s.slice(0,40)+'…':s);}
 function specAll(k){const v=(comp.specs[0]||{})[k]||''; comp.specs.forEach(x=>x[k]=v); render();}
 /* the composer's casting menu: the union of the selected segments' talent menus */
 function castMenu(){const out=[];
@@ -1911,8 +2422,9 @@ function addLane(){
   const made=cs.map(c=>{
     const menu=((B.layer.segments.find(x=>x.name===c.segment)||{}).casting)||[];
     /* a casting from another segment's menu cannot travel to this lane — dropped, not mis-assigned */
+    /* the reference link is NOT segment-bound the way casting is — it is inspiration, so it reaches every lane */
     const specs=(comp.specs||[]).slice(0,+comp.concepts||1)
-      .map(x=>({casting:menu.includes(x.casting)?x.casting:'',format:x.format||'',route:x.route||''}));
+      .map(x=>({casting:menu.includes(x.casting)?x.casting:'',format:x.format||'',route:x.route||'',ref:(x.ref||'').trim()}));
     return {...c,hypothesis:comp.hypothesis,concepts:+comp.concepts||1,variants:comp.variants?+comp.variants:'',
       notes:comp.notes,conceptSpecs:specs,
       castings:[...new Set(specs.map(x=>x.casting).filter(Boolean))],
@@ -1924,7 +2436,7 @@ function addLane(){
 function editLane(i){const l=B.draft.lanes[i];
   const n=Math.max(1,+l.concepts||1);
   const specs=(l.conceptSpecs||[]).map(x=>({...x}));
-  while(specs.length<n)specs.push({casting:(l.castings||[])[0]||'',format:(l.formats||[])[0]||'',route:''});
+  while(specs.length<n)specs.push({casting:(l.castings||[])[0]||'',format:(l.formats||[])[0]||'',route:'',ref:''});
   comp={...rmBlank(),ctp:[l.ctp],segment:[l.segment],angle:[l.angle],funnel:[l.funnel],phase:[l.phase],
     hypothesis:l.hypothesis,concepts:n,variants:l.variants,notes:l.notes,delivery:l.delivery||'',
     specs:specs.slice(0,n),_edit:i};
@@ -2128,7 +2640,7 @@ function rmConcepts(lanes){
         d:+l.delivery||0,cNum:(nums[i]||[])[k]||0,
         casting:sp.casting||((l.castings||[]).length===1?l.castings[0]:''),
         format:sp.format||((l.formats||[]).length===1?l.formats[0]:''),
-        route:sp.route||'',menu:m,
+        route:sp.route||'',menu:m,ref:sp.ref||'',
         due:g&&g.due?g.due:null,
         start:(g&&g.due&&m&&m.bd)?addDays(g.due,-(bdToCal(m.bd)-1)):null});
     }
@@ -2144,7 +2656,7 @@ function rmSheetRows(lanes){
       d:'D'+String(c.d).padStart(3,'0'),c:'C'+String(c.cNum).padStart(3,'0'),
       deliveryDue:c.due?fmtDateMDY(ymdOf(c.due)):'',strategist:route.strategist||'Evan',
       variant:c.lane.variants?'V'+String(v).padStart(2,'0'):'',newIter:'NEW',
-      format:c.format,talent:c.casting,hypothesis:cleanCell(c.lane.hypothesis),
+      format:c.format,talent:c.casting,visualRef:c.ref,hypothesis:cleanCell(c.lane.hypothesis),
       product:B.layer.product.name,
       ctp:(personaOf(c.lane.ctp)||{}).tag||c.lane.ctp,segment:c.lane.segment,angle:c.lane.angle,
       funnel:c.lane.funnel,phase:c.lane.phase});
@@ -2184,7 +2696,7 @@ function briefPayload(lanes){
         segment:{name:c.lane.segment,age:sg.age||null,castingMenu:sg.casting||[]},
         angle:c.lane.angle,funnel:c.lane.funnel,phase:c.lane.phase,
         hypothesis:c.lane.hypothesis,notes:c.lane.notes||'',
-        casting:c.casting||null,format:c.format||null,
+        casting:c.casting||null,format:c.format||null,visualReference:c.ref||null,
         production:c.menu?{route:c.menu.id,name:c.menu.name,timeline:c.menu.tl,team:c.menu.team,baseCost:c.menu.cost}:null};
     })};
 }
@@ -2209,7 +2721,8 @@ function roadmapMD(lanes){
       (l.conceptSpecs&&l.conceptSpecs.length?l.conceptSpecs:Array.from({length:Math.max(1,+l.concepts||1)},()=>({}))).slice(0,Math.max(1,+l.concepts||1)).forEach((sp,k)=>{
         const m=menuOf(sp.route);
         L.push('- **C'+String(cn[k]||0).padStart(3,'0')+'**'+(l.variants?' ×'+l.variants+' variants':'')
-          +' — '+(sp.format||'format TBD')+(sp.casting?' · '+sp.casting:'')+(m?' · '+m.name+' ('+m.tl+')':''));
+          +' — '+(sp.format||'format TBD')+(sp.casting?' · '+sp.casting:'')+(m?' · '+m.name+' ('+m.tl+')':'')
+          +(sp.ref?' · reference: '+sp.ref:''));
       });
       if(l.notes)L.push('','_Notes: '+l.notes+'_');
     });
@@ -2345,10 +2858,10 @@ const RM_EXPORTS={
     blurb:'One row per concept with its Menu route, team, business days, base cost, due date and the date it has to start. For PM / Monday. Menu figures are quoted turnarounds, not measured cycle time.',
     build:l=>({cols:PROD_COLS,keys:PROD_KEYS,rows:prodRows(l)})},
   briefs:{icon:'📝',name:'Brief payload',ext:'json',
-    blurb:'One object per concept with the strategy resolved — persona insight and clothing persona, segment age and casting menu, angle, funnel, phase, hypothesis, notes, casting, format and production route.',
+    blurb:'One object per concept with the strategy resolved — persona insight and clothing persona, segment age and casting menu, angle, funnel, phase, hypothesis, notes, casting, format, production route and the visual reference link.',
     build:l=>({text:JSON.stringify(briefPayload(l),null,1)})},
   doc:{icon:'📄',name:'Readable roadmap',ext:'md',
-    blurb:'Markdown: the thesis, the deliveries with their dates, every swimlane as its sentence and hypothesis, and the concepts with casting/format/route. For Slack, Notion or the client.',
+    blurb:'Markdown: the thesis, the deliveries with their dates, every swimlane as its sentence and hypothesis, and the concepts with casting/format/route and any reference link. For Slack, Notion or the client.',
     build:l=>({text:roadmapMD(l)})},
   onepager:{icon:'🖼',name:'One-pager',ext:'html',html:true,
     blurb:'A standalone, printable page: the thesis, the numbers, the network and every test. No working material. For a review, a deck or the client — print it to a single landscape sheet.',
@@ -2473,7 +2986,7 @@ function vBuilder(){
           <span style="margin-left:auto;font-size:11px;color:var(--ink3)">C${String((nums[i]||[0])[0]).padStart(3,'0')}${l.concepts>1?`–C${String((nums[i]||[0]).slice(-1)[0]).padStart(3,'0')}`:''}</span></div>
         <div class="lt">${esc(l.ctp)} · ${esc(l.segment)} · <b>${esc(l.angle)}</b> · ${esc(l.funnel)} · ${esc(l.phase)}</div>
         <div class="lm">${l.concepts} concept(s)${l.variants?` × ${l.variants} variant(s)`:''} — ${esc((l.hypothesis||'').slice(0,80))}</div>
-        ${(l.conceptSpecs||[]).some(x=>x.casting||x.format)?`<div class="lm">${(l.conceptSpecs||[]).map((x,k)=>`C${String((nums[i]||[])[k]||0).padStart(3,'0')}: ${esc(x.format||'—')}${x.casting?' · 🎭 '+esc(x.casting):''}`).join(' &nbsp;|&nbsp; ')}</div>`
+        ${(l.conceptSpecs||[]).some(x=>x.casting||x.format||x.ref)?`<div class="lm">${(l.conceptSpecs||[]).map((x,k)=>`C${String((nums[i]||[])[k]||0).padStart(3,'0')}: ${esc(x.format||'—')}${x.casting?' · 🎭 '+esc(x.casting):''}${x.ref?' · '+refHtml(x.ref):''}`).join(' &nbsp;|&nbsp; ')}</div>`
           :(l.castings||[]).length||(l.formats||[]).length?`<div class="lm">${(l.castings||[]).length?`🎭 ${esc(l.castings.join(', '))}`:''}${(l.castings||[]).length&&(l.formats||[]).length?' · ':''}${(l.formats||[]).length?`🎞 ${esc(l.formats.join('/'))}`:''}</div>`:''}
         <div style="margin-top:6px"><button class="btn tiny" onclick="editLane(${i})">✎ Edit</button>
           <button class="btn tiny" onclick="dupLane(${i})" title="Same test, next delivery — a line carries one delivery, so running it again means a second line.">⧉ Duplicate</button>
@@ -2498,9 +3011,9 @@ function vBuilder(){
         const c0=(()=>{let c=+RM().conceptStart||1;const ls=(B.draft||{}).lanes||[];
           ls.forEach(l=>{if((+l.delivery||9999)<(+comp.delivery||nextDelivery()))c+=Math.max(1,+l.concepts||1);});return c;})();
         const opt=(v,sv)=>`<option value="${esc(v)}" ${sv===v?'selected':''}>${esc(v)}</option>`;
-        return `<div class="f" style="margin-top:12px"><label>Suggested casting &amp; format — per concept</label>
-        <table class="k specs"><tr><th style="width:56px">Concept</th><th>Suggested casting</th><th style="width:88px">Format</th><th style="width:172px">Production route <span class="hint" style="text-transform:none;letter-spacing:0">(Menu — quoted, not measured)</span></th></tr>
-        ${Array.from({length:n},(_,i)=>{const sp=specs[i]||{casting:'',format:'',route:''};return `<tr>
+        return `<div class="f" style="margin-top:12px"><label>Suggested casting, format &amp; reference — per concept</label>
+        <table class="k specs"><tr><th style="width:56px">Concept</th><th>Suggested casting</th><th style="width:88px">Format</th><th style="width:172px">Production route <span class="hint" style="text-transform:none;letter-spacing:0">(Menu — quoted, not measured)</span></th><th style="width:180px">Reference link <span class="hint" style="text-transform:none;letter-spacing:0">(optional — an ad to use as inspo)</span></th></tr>
+        ${Array.from({length:n},(_,i)=>{const sp=specs[i]||{casting:'',format:'',route:'',ref:''};return `<tr>
           <td><b>C${String(c0+i).padStart(3,'0')}</b>${cs.length>1?'<span class="hint" style="display:block">×'+cs.length+' lanes</span>':''}</td>
           <td><select onchange="setSpec(${i},'casting',this.value)">
             <option value="">— pick in the sheet —</option>
@@ -2510,10 +3023,11 @@ function vBuilder(){
           <td><select onchange="setSpec(${i},'route',this.value)">
             <option value="">— not scheduled —</option>
             ${MENU.map(m=>`<option value="${m.id}" ${sp.route===m.id?'selected':''}>${esc(m.name)} · ${m.bd?m.bd+'d':'TBD'}${m.cost?' · $'+m.cost:''}</option>`).join('')}
-          </select>${sp.route&&menuOf(sp.route)?`<div class="hint" style="margin-top:2px">${esc(menuOf(sp.route).tl)} · ${esc(menuOf(sp.route).team)}</div>`:''}</td></tr>`;}).join('')}
+          </select>${sp.route&&menuOf(sp.route)?`<div class="hint" style="margin-top:2px">${esc(menuOf(sp.route).tl)} · ${esc(menuOf(sp.route).team)}</div>`:''}</td>
+          <td><input value="${esc(sp.ref||'')}" placeholder="https://… — the ad you are iterating on" title="Optional. Lands in the Strategy Sheet's Visual Reference column and the brief's Visual reference field." oninput="setSpecRef(${i},this.value)" style="width:100%;border:1px solid var(--line2);background:var(--card2);color:var(--ink);border-radius:7px;font:inherit;font-size:12px;padding:4px 6px"></td></tr>`;}).join('')}
         </table>
-        ${n>1?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn tiny" onclick="specAll('casting')">Apply C1's casting to all</button><button class="btn tiny" onclick="specAll('format')">Apply C1's format to all</button><button class="btn tiny" onclick="specAll('route')">Apply C1's route to all</button></div>`:''}
-        <div class="hint" style="margin-top:5px">The <b>production route</b> is what the Creative Menu costs and times — an ad format doesn’t decide it (a VID can be a 3-day Editor Ad or a Creator bundle), so VID is left blank until you pick. Casting is who’s on camera, NOT a test variable — to TEST one, promote it to a segment (↑ in the Strategy Layer). Leaving a row blank hands that choice to the Strategy Sheet.${menu.length>1?' The menu is the union of the '+menu.length+' segments you picked; a casting that doesn’t belong to a lane’s own segment is dropped from that lane.':''}</div></div>`;})()}
+        ${n>1?`<div style="margin-top:6px;display:flex;gap:6px;flex-wrap:wrap"><button class="btn tiny" onclick="specAll('casting')">Apply C1's casting to all</button><button class="btn tiny" onclick="specAll('format')">Apply C1's format to all</button><button class="btn tiny" onclick="specAll('route')">Apply C1's route to all</button><button class="btn tiny" onclick="specAll('ref')">Apply C1's reference to all</button></div>`:''}
+        <div class="hint" style="margin-top:5px">The <b>production route</b> is what the Creative Menu costs and times — an ad format doesn’t decide it (a VID can be a 3-day Editor Ad or a Creator bundle), so VID is left blank until you pick. Casting is who’s on camera, NOT a test variable — to TEST one, promote it to a segment (↑ in the Strategy Layer). Leaving a row blank hands that choice to the Strategy Sheet. The <b>reference link</b> is optional and is not a test variable either — it is the whole ad you want to use as inspiration when replaying the same dimensions is not enough on its own. Unlike casting it is never dropped, so it reaches every composed lane, and it lands in the Strategy Sheet’s <b>Visual Reference</b> column and the brief’s <b>Visual reference</b> field.${menu.length>1?' The menu is the union of the '+menu.length+' segments you picked; a casting that doesn’t belong to a lane’s own segment is dropped from that lane.':''}</div></div>`;})()}
       <div class="f" style="margin-top:10px"><label>Notes to the creative team</label>
         <textarea oninput="comp.notes=this.value">${esc(comp.notes)}</textarea></div>
       <button class="btn primary" style="margin-top:12px" onclick="addLane()">＋ ${comp._edit!==undefined?'Save swimlane':'Add '+(cs.length>1?cs.length+' swimlanes':'swimlane')}</button>`
@@ -2567,7 +3081,7 @@ function vRoadmapView(){
   ${R.lanes.map((l,i)=>`<div class="lane" style="border-left-color:${TUBE_C(i)}" onmouseenter="hlLane(${i})" onmouseleave="hlLane(null)"><div class="lt"><b>${l.delivery?'D'+String(l.delivery).padStart(3,'0'):'Swimlane '+(i+1)}:</b>${varAlert(l)}
     Test <b>${esc(l.ctp)}</b> in <b>${esc(l.segment)}</b>, through the <b>${esc(l.angle)}</b> angle, at <b>${esc(l.funnel)}</b> as an <b>${esc(l.phase)}</b> play.</div>
     <div class="lm"><b>Hypothesis:</b> ${esc(l.hypothesis)}</div>
-    ${(l.conceptSpecs||[]).some(x=>x.casting||x.format)?`<div class="lm">${(l.conceptSpecs||[]).map((x,k)=>`C${String((l.conceptNums||[])[k]||0).padStart(3,'0')}: ${esc(x.format||'—')}${x.casting?' · 🎭 '+esc(x.casting):''}`).join(' &nbsp;|&nbsp; ')}</div>`:''}
+    ${(l.conceptSpecs||[]).some(x=>x.casting||x.format||x.ref)?`<div class="lm">${(l.conceptSpecs||[]).map((x,k)=>`C${String((l.conceptNums||[])[k]||0).padStart(3,'0')}: ${esc(x.format||'—')}${x.casting?' · 🎭 '+esc(x.casting):''}${x.ref?' · '+refHtml(x.ref):''}`).join(' &nbsp;|&nbsp; ')}</div>`:''}
     <div class="lm">${l.concepts} concept(s)${l.variants?` × ${l.variants} variant(s)`:''}${(l.castings||[]).length?` · <b>🎭</b> ${esc(l.castings.join(', '))}`:''}${(l.formats||[]).length?` · <b>🎞</b> ${esc(l.formats.join('/'))}`:''}${l.notes?` · <b>Notes:</b> ${esc(l.notes)}`:''}</div></div>`).join('')}
   ${vTube(R.lanes)}${vRmExport()}`;
 }
@@ -2626,7 +3140,8 @@ function conceptList(){
       out.push({id:`L${li}C${k}`,d:'',c:`Concept ${k} of ${l.concepts} · Swimlane ${li+1}`,variants:+l.variants||0,
         ctp:l.ctp,segment:l.segment,angle:l.angle,funnel:l.funnel,phase:l.phase,hypothesis:l.hypothesis,
         talent:(l.castings||[]).length===1?l.castings[0]:'',format:(l.formats||[]).length===1?l.formats[0]:'',
-        castings:l.castings||[],formats:l.formats||[],notes:l.notes,route:((l.conceptSpecs||[])[k-1]||{}).route||''});});
+        castings:l.castings||[],formats:l.formats||[],notes:l.notes,route:((l.conceptSpecs||[])[k-1]||{}).route||'',
+        visualRef:((l.conceptSpecs||[])[k-1]||{}).ref||''});});
   }
   /* briefs started from scratch — everything the roadmap would provide is picked inside the brief, from the Strategy Layer */
   (B.customBriefs||[]).forEach(cb=>out.push({...cb,custom:true,
@@ -3319,7 +3834,7 @@ function copyAllBriefs(){
 }
 
 /* boot */
-applyTheme(); render();
+applyTheme(); render(); bootFromUrl();
 </script>
 </body>
 </html>
