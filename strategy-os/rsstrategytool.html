@@ -1679,7 +1679,7 @@ function plsBodyDims(R){
   return `
   <div class="card pls-card" id="pls-m6"><div class="card-h"><h3>⟐ Creative history &amp; results — ad dimensions (M6)</h3>
     <span class="hint">what the ad shows, crossed with performance by the engine · describes executions, does not validate CTPs</span>
-    <a class="btn pls-btn" id="pls-open-library" href="../app/explorar-m6.html?brand=${encodeURIComponent((B.name||'grubhub').toLowerCase())}" target="_blank" rel="noopener" title="Ad Library · history &amp; results — the creative view: real ads, filters by decision, CPA by month, compare two ads, save references (needs the OS served over http, e.g. py -m http.server 8765 --bind 127.0.0.1)">🎞 Open Ad Library</a>
+    ${/^(127\.0\.0\.1|localhost)$/.test(location.hostname)?`<a class="btn pls-btn" id="pls-open-library" href="../app/explorar-m6.html?brand=${encodeURIComponent((B.name||'grubhub').toLowerCase())}" target="_blank" rel="noopener" title="Ad Library · history &amp; results — the creative view: real ads, filters by decision, CPA by month, compare two ads, save references (needs the OS served over http, e.g. py -m http.server 8765 --bind 127.0.0.1)">🎞 Open Ad Library</a>`:''}
     ${keys.length>1?`<select class="pls-sel" id="pls-run-sel" title="Stratum: which run of the engine is on screen" onchange="plsSelectRun(this.value)">${keys.map(k=>`<option value="${esc(k)}" ${k===curKey?'selected':''}>${esc(plsRunLabel(k,runs[k]))}</option>`).join('')}</select>`:''}</div>
     <div class="card-b">
     <div class="fbrow">📊 <b>${esc(src.name||'M6 run')}</b>${keys.length>1?` · stratum <b>${esc(plsRunLabel(curKey,R))}</b> (${keys.length} runs loaded)`:''} · data: ${esc(src.dates||'—')} · loaded ${esc(src.loadedAt||'—')} by ${esc(src.loadedBy||'—')}
