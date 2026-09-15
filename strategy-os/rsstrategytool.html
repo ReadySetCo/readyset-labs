@@ -1677,7 +1677,7 @@ function plsBodyDims(R){
   const b=R.benchmarks||{}, S=R.source_full||{}, src=R.source||{}, T=R.tested||[];
   const FI=plsFichasInfo(), runs=plsRunsAll(), keys=Object.keys(runs), curKey=R.key||'';
   return `
-  <div class="card pls-card" id="pls-m6"><div class="card-h"><h3>⟐ Ad dimensions × performance (M6)</h3>
+  <div class="card pls-card" id="pls-m6"><div class="card-h"><h3>⟐ Creative history &amp; results — ad dimensions (M6)</h3>
     <span class="hint">what the ad shows, crossed with performance by the engine · describes executions, does not validate CTPs</span>
     ${keys.length>1?`<select class="pls-sel" id="pls-run-sel" title="Stratum: which run of the engine is on screen" onchange="plsSelectRun(this.value)">${keys.map(k=>`<option value="${esc(k)}" ${k===curKey?'selected':''}>${esc(plsRunLabel(k,runs[k]))}</option>`).join('')}</select>`:''}</div>
     <div class="card-b">
@@ -1685,7 +1685,7 @@ function plsBodyDims(R){
       <br><span style="color:var(--ink3); font-size:11.5px">${esc(S.origen||'')} · taxonomy ${esc(S.taxonomia||'—')} · perception ${esc(S.gemini||'—')} · judge ${esc(S.juez||'—')} on ${S.fuentes&&S.fuentes['juez:'+S.juez]||0} assets</span>
       <br><span style="color:var(--ink3); font-size:11.5px" id="pls-fichas-info">🗂 learning cards: ${FI?`<b>${FI.n}</b> loaded (${esc(FI.name)} · separability ${esc(FI.sep||'—')} · commit ${esc(FI.commit||'—')})${FI.persisted?'':' · <b style="color:var(--warn)">not persisted: browser storage is full</b>'}`:'<b>none loaded</b> — cells open with the run only'} · <label class="pls-link">load fichas-dimensiones.json<input type="file" accept=".json" style="display:none" onchange="plsLoadFichas(this)"></label>${FI?` · <a class="pls-link" onclick="plsClearFichas()">remove</a>`:''}</span></div>
     <div class="tiles" style="margin-top:12px">
-      <div class="tile"><div class="v">${plsFmt$(S.spend_unico||S.spend_cubierto||0)}</div><div class="l">Unique spend covered${S.pct_spend_cubierto?` · ${S.pct_spend_cubierto}% of the account`:''}</div></div>
+      <div class="tile"><div class="v">${plsFmt$(S.spend_unico||S.spend_cubierto||0)}</div><div class="l">Spend of the ads in this dataset${S.pct_spend_cubierto?` · ${S.pct_spend_cubierto}% of the inventory with dimensions`:''}</div></div>
       <div class="tile"><div class="v">${S.assets_con_dimensiones||'—'}</div><div class="l">Assets with dimensions${S.assets_total?` of ${S.assets_total}`:''}</div></div>
       <div class="tile"><div class="v">${T.length}</div><div class="l">Dimension × value groups (overlapping)</div></div>
       <div class="tile"><div class="v">${b.cpa?plsFmt$(b.cpa):'—'}</div><div class="l">Reference CPA benchmark (${esc(b.convEvent||'conv')}); each obs uses its month's</div></div>
